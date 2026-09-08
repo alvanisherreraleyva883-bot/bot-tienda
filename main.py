@@ -4,7 +4,7 @@ import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
-TOKEN = os.environ.get("TOKEN")
+TOKEN = os.environ.get(8905441969:AAEusap7k6Gh09iWnky-c0zi-Wn-gkKMx1U)
 ADMIN_ID = -1003602948532
 
 # Mini servidor para Render
