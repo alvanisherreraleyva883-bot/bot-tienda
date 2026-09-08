@@ -1,9 +1,20 @@
 import os
+from flask import Flask
+import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 TOKEN = os.environ.get("TOKEN")
 ADMIN_ID = -1003602948532
+
+# Mini servidor para Render
+web = Flask(__name__)
+@web.route('/')
+def home():
+    return "Bot tienda activo"
+def run_web():
+    web.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+threading.Thread(target=run_web, daemon=True).start()
 
 async def mostrar_menu(update_or_query, context):
     keyboard = [
@@ -49,45 +60,4 @@ async def recibir_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if estado == "esperando_monto_compra":
         context.user_data["monto"] = update.message.text
         context.user_data["estado"] = "esperando_captura_compra"
-        await update.message.reply_text(f"✅ Monto {update.message.text} registrado. Manda captura 📸")
-        await context.bot.send_message(ADMIN_ID, f"👤 {nombre} QUIERE COMPRAR {update.message.text}")
-        return
-    if estado == "esperando_captura_compra" and update.message.photo:
-        context.user_data["estado"] = "esperando_telefono"
-        await update.message.reply_text("📸 Recibida. Ahora escribe el número a recargar 📲")
-        return
-    if estado == "esperando_telefono":
-        resumen = f"📲 RESUMEN COMPRA\n👤 {nombre} ID:{user.id}\n💵 Monto: {context.user_data.get('monto')}\n📱 Tel: {update.message.text}"
-        await context.bot.send_message(ADMIN_ID, resumen)
-        await update.message.reply_text("✅ Listo. Te recargamos en breve.")
-        context.user_data.clear()
-        return
-
-    if estado == "esperando_monto_venta":
-        context.user_data["monto"] = update.message.text
-        context.user_data["estado"] = "esperando_captura_venta"
-        await update.message.reply_text("✅ Monto registrado. Manda captura 📸")
-        await context.bot.send_message(ADMIN_ID, f"👤 {nombre} QUIERE VENDER {update.message.text}")
-        return
-    if estado == "esperando_captura_venta" and update.message.photo:
-        context.user_data["estado"] = "esperando_datos"
-        await update.message.reply_text("📸 Recibida. Ahora manda tu tarjeta y número")
-        return
-    if estado == "esperando_datos":
-        resumen = f"💵 RESUMEN VENTA\n👤 {nombre} ID:{user.id}\n💳 Monto: {context.user_data.get('monto')}\n📱 Datos: {update.message.text}"
-        await context.bot.send_message(ADMIN_ID, resumen)
-        await update.message.reply_text("✅ Datos recibidos. Te pagamos en breve.")
-        context.user_data.clear()
-        return
-
-def main():
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("tienda", tienda))
-    app.add_handler(CommandHandler("start", tienda))
-    app.add_handler(CallbackQueryHandler(button))
-    app.add_handler(MessageHandler(filters.ALL, recibir_mensaje))
-    print("🤖 Bot activo...")
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
+        await update.message.reply_text(f"✅ Monto
