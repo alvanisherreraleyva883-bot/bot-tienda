@@ -4,7 +4,7 @@ from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
-TOKEN = os.environ.get("BOT_TOKEN", "8905441969:AAFWx6l1lmUkZv-yafo7PQ2wn4_2PPipVoE")
+TOKEN = os.environ.get("TOKEN")
 ADMIN_ID = -1003602948532
 
 app_web = Flask(__name__)
