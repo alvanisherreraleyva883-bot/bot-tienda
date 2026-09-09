@@ -33,6 +33,10 @@ def guardar_precios(d):
 precios = cargar_precios()
 def gen_id(): return f"{random.randint(1000, 9999)}"
 
+# === NUEVO: ALMACEN DE PEDIDOS PENDIENTES PARA APROBACION ===
+PENDIENTES = {} # pid -> datos
+lock_pendientes = Lock()
+
 async def cambiar_saldo(u,c):
     if u.effective_user.id!= ADMIN_USER_ID: return
     if not c.args: return await u.message.reply_text(f"Actual: {precios['saldo_compra']}\nUso: /saldo 950")
@@ -65,6 +69,8 @@ async def soporte(u,c):
 async def button(update, context):
     q=update.callback_query; await q.answer()
     data=q.data
+
+    # CONFIRMAR PAGO FINAL (lo que ya tenias)
     if data.startswith("confirmar_"):
         try:
             _, uid_str, pid = data.split("_",2)
@@ -72,6 +78,69 @@ async def button(update, context):
             await q.edit_message_text(f"{q.message.text}\n\n✅ CONFIRMADO Y PAGADO - #{pid}")
         except Exception as e: print(e)
         return
+
+    # === NUEVO: APROBAR / RECHAZAR SOLICITUD ===
+    if data.startswith("aprobar_"):
+        try:
+            _, uid_str, pid = data.split("_",2)
+            uid = int(uid_str)
+            with lock_pendientes:
+                info = PENDIENTES.pop(pid, None)
+            if not info:
+                await q.edit_message_text(f"{q.message.text}\n\n⚠️ Ya fue procesado #{pid}")
+                return
+
+            tipo = info["tipo"]
+            # Restauramos el flow al usuario
+            user_data = context.application.user_data.get(uid, {})
+
+            if tipo == "compra_saldo":
+                user_data["flow"] = "compra_saldo_captura"
+                user_data["monto"] = info["monto"]
+                user_data["total_cup"] = info["total"]
+                user_data["pedido_id"] = pid
+                await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\nQuieres {info['monto']:.0f} saldo = {info['total']:.0f} CUP\n\nTransfiere {info['total']:.0f} CUP a:\nTarjeta: {TARJETA}\nMovil: {MOVIL}\n\nManda CAPTURA")
+            elif tipo == "venta_saldo":
+                user_data["flow"] = "venta_saldo_captura"
+                user_data["monto"] = info["monto"]
+                user_data["total_cup"] = info["total"]
+                user_data["pedido_id"] = pid
+                await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\nVendes {info['monto']:.0f} saldo\nRecibes: {info['total']:.0f} CUP\n\nTransfiere saldo a {MOVIL} y manda CAPTURA")
+            elif tipo == "compra_usdt":
+                user_data["flow"] = "compra_usdt_wallet"
+                user_data["usdt"] = info["monto"]
+                user_data["total_cup"] = info["total"]
+                user_data["pedido_id"] = pid
+                await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\n{info['monto']} USDT = {info['total']:.0f} CUP\n\nManda tu WALLET BEP20")
+            elif tipo == "venta_usdt":
+                user_data["flow"] = "venta_usdt_captura"
+                user_data["usdt"] = info["monto"]
+                user_data["total_cup"] = info["total"]
+                user_data["pedido_id"] = pid
+                await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\nVenderás {info['monto']} USDT\nRecibirás: {info['total']:.0f} CUP\n\nEnvía los {info['monto']} USDT a:\n{WALLET_BEP20}\n\nLuego manda CAPTURA")
+
+            context.application.user_data[uid] = user_data
+            await q.edit_message_text(f"{q.message.text}\n\n✅ APROBADO POR TI - #{pid}")
+
+        except Exception as e:
+            print(f"Error aprobar: {e}")
+        return
+
+    if data.startswith("rechazar_"):
+        try:
+            _, uid_str, pid = data.split("_",2)
+            uid = int(uid_str)
+            with lock_pendientes:
+                PENDIENTES.pop(pid, None)
+            # Limpiar al usuario
+            if uid in context.application.user_data:
+                context.application.user_data[uid].clear()
+            await context.bot.send_message(uid, f"❌ Pedido #{pid} rechazado.\n\nNo se pudo realizar la operación en este momento, intenta más tarde.\nUsa /tienda")
+            await q.edit_message_text(f"{q.message.text}\n\n❌ RECHAZADO POR TI - #{pid}")
+        except Exception as e:
+            print(f"Error rechazar: {e}")
+        return
+
     if data=="menu": await mostrar_menu(q,context); return
     pid=gen_id()
     context.user_data.clear()
@@ -100,15 +169,23 @@ async def recibir_mensaje(update, context):
     if not flow: return await update.message.reply_text("Usa /tienda")
     def header(t): return f"🆕 #{pid} - {t}\n👤 {usuario} {username}\n🆔 {uid}"
     def btn_confirmar(): return InlineKeyboardMarkup([[InlineKeyboardButton(f"✅ Confirmar Pago #{pid}", callback_data=f"confirmar_{uid}_{pid}")]])
+    def btn_aprobacion():
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"✅ APROBAR #{pid}", callback_data=f"aprobar_{uid}_{pid}"),
+             InlineKeyboardButton(f"❌ RECHAZAR", callback_data=f"rechazar_{uid}_{pid}")]
+        ])
 
     if flow=="compra_saldo":
         try:
             monto=float(txt.replace(",","."))
             total=(monto/360)*precios['saldo_compra']
-            context.user_data["monto"]=monto; context.user_data["total_cup"]=total; context.user_data["flow"]="compra_saldo_captura"
-            await update.message.reply_text(f"✅ #{pid}\nQuieres {monto:.0f} saldo = {total:.0f} CUP\n\nTransfiere {total:.0f} CUP a:\nTarjeta: {TARJETA}\nMovil: {MOVIL}\n\nManda CAPTURA")
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"{header('COMPRA SALDO')}\nSaldo: {monto:.0f}\nTotal: {total:.0f} CUP")
+            # Guardamos pendiente y pedimos aprobacion
+            with lock_pendientes:
+                PENDIENTES[pid] = {"uid": uid, "tipo": "compra_saldo", "monto": monto, "total": total, "usuario": usuario, "username": username}
+            await update.message.reply_text(f"⏳ #{pid}\nSolicitud de {monto:.0f} saldo = {total:.0f} CUP enviada a revisión.\nTe avisamos cuando sea aprobada.")
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"🔔 SOLICITUD PENDIENTE #{pid}\n{header('COMPRA SALDO')}\nSaldo: {monto:.0f}\nTotal: {total:.0f} CUP\n\n¿Aprobar?", reply_markup=btn_aprobacion())
         except: await update.message.reply_text("Solo número. Ej: 360")
+
     elif flow=="compra_saldo_captura":
         if update.message.photo:
             try: await update.message.forward(ADMIN_CHANNEL_ID)
@@ -128,9 +205,10 @@ async def recibir_mensaje(update, context):
         try:
             monto=float(txt.replace(",","."))
             total=(monto/360)*precios['saldo_venta']
-            context.user_data["monto"]=monto; context.user_data["total_cup"]=total; context.user_data["flow"]="venta_saldo_captura"
-            await update.message.reply_text(f"✅ #{pid}\nVendes {monto:.0f} saldo\nRecibes: {total:.0f} CUP\n\nTransfiere saldo a {MOVIL} y manda CAPTURA")
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"{header('VENTA SALDO')}\nSaldo: {monto:.0f}\nA pagar: {total:.0f} CUP")
+            with lock_pendientes:
+                PENDIENTES[pid] = {"uid": uid, "tipo": "venta_saldo", "monto": monto, "total": total, "usuario": usuario, "username": username}
+            await update.message.reply_text(f"⏳ #{pid}\nSolicitud de vender {monto:.0f} saldo = {total:.0f} CUP enviada a revisión.")
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"🔔 SOLICITUD PENDIENTE #{pid}\n{header('VENTA SALDO')}\nSaldo: {monto:.0f}\nA pagar: {total:.0f} CUP\n\n¿Aprobar?", reply_markup=btn_aprobacion())
         except: await update.message.reply_text("Solo número. Ej: 360")
     elif flow=="venta_saldo_captura":
         if update.message.photo:
@@ -151,8 +229,10 @@ async def recibir_mensaje(update, context):
         try:
             cant=float(txt.replace(",","."))
             total=cant*precios['usdt_compra']
-            context.user_data["usdt"]=cant; context.user_data["total_cup"]=total; context.user_data["flow"]="compra_usdt_wallet"
-            await update.message.reply_text(f"✅ #{pid}\n{cant} USDT = {total:.0f} CUP\n\nManda tu WALLET BEP20")
+            with lock_pendientes:
+                PENDIENTES[pid] = {"uid": uid, "tipo": "compra_usdt", "monto": cant, "total": total, "usuario": usuario, "username": username}
+            await update.message.reply_text(f"⏳ #{pid}\nSolicitud de {cant} USDT = {total:.0f} CUP enviada a revisión.")
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"🔔 SOLICITUD PENDIENTE #{pid}\n{header('COMPRA USDT')}\nCantidad: {cant} USDT = {total:.0f} CUP\n\n¿Aprobar?", reply_markup=btn_aprobacion())
         except: await update.message.reply_text("Solo número. Ej: 10")
     elif flow=="compra_usdt_wallet":
         context.user_data["wallet_cliente"]=txt; context.user_data["flow"]="compra_usdt_captura"
@@ -180,9 +260,10 @@ async def recibir_mensaje(update, context):
         try:
             cant=float(txt.replace(",","."))
             total=cant*precios['usdt_venta']
-            context.user_data["usdt"]=cant; context.user_data["total_cup"]=total; context.user_data["flow"]="venta_usdt_captura"
-            await update.message.reply_text(f"✅ #{pid}\nVenderás {cant} USDT\nRecibirás: {total:.0f} CUP\n\nEnvía los {cant} USDT a:\n{WALLET_BEP20}\n\nLuego manda CAPTURA")
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"{header('VENTA USDT')}\nCantidad: {cant} USDT = {total:.0f} CUP")
+            with lock_pendientes:
+                PENDIENTES[pid] = {"uid": uid, "tipo": "venta_usdt", "monto": cant, "total": total, "usuario": usuario, "username": username}
+            await update.message.reply_text(f"⏳ #{pid}\nSolicitud de vender {cant} USDT = {total:.0f} CUP enviada a revisión.")
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"🔔 SOLICITUD PENDIENTE #{pid}\n{header('VENTA USDT')}\nCantidad: {cant} USDT = {total:.0f} CUP\n\n¿Aprobar?", reply_markup=btn_aprobacion())
         except: await update.message.reply_text("Solo número. Ej: 20")
     elif flow=="venta_usdt_captura":
         if update.message.photo:
@@ -212,5 +293,5 @@ def main():
     app.add_handler(CommandHandler("precios",ver_precios))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler(filters.ALL,recibir_mensaje))
-    print("🤖 Bot FINAL con soporte @AlvanisPivqvaplay"); app.run_polling()
+    print("🤖 Bot FINAL con aprobación manual"); app.run_polling()
 if __name__=="__main__": main()
