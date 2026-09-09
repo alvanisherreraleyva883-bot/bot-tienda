@@ -1,6 +1,6 @@
-import os, json
+import os, json, random
 from flask import Flask
-from threading import Thread
+from threading import Thread, Lock
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
@@ -8,7 +8,6 @@ TOKEN = os.environ.get("TOKEN")
 ADMIN_CHANNEL_ID = -1003602948532
 ADMIN_USER_ID = 7450751212
 
-# TUS DATOS
 TARJETA = "9238-1299-7507-3018"
 MOVIL = "55348244"
 WALLET_BEP20 = "0x5Ba930B965f535c202D224f4AEC5745174C2F5e9"
@@ -18,46 +17,59 @@ app_web = Flask(__name__)
 def home(): return "Bot activo"
 
 PRECIOS_FILE = "precios.json"
+lock_precios = Lock()
+
 def cargar_precios():
     if os.path.exists(PRECIOS_FILE):
         try:
-            with open(PRECIOS_FILE, "r") as f: return json.load(f)
+            with open(PRECIOS_FILE, "r", encoding="utf-8") as f: return json.load(f)
         except: pass
     return {"saldo_compra": 900, "saldo_venta": 750, "usdt_compra": 360, "usdt_venta": 350}
 
 def guardar_precios(d):
-    with open(PRECIOS_FILE, "w") as f: json.dump(d, f)
+    with lock_precios:
+        with open(PRECIOS_FILE, "w", encoding="utf-8") as f: json.dump(d, f)
 
 precios = cargar_precios()
 
-# COMANDOS ADMIN
+def gen_id():
+    return f"PEDIDO-{random.randint(1000, 9999)}"
+
 async def cambiar_saldo(update, context):
     if update.effective_user.id!= ADMIN_USER_ID: return
     if not context.args: return await update.message.reply_text(f"Compra saldo: {precios['saldo_compra']}\nUso: /saldo 950")
-    precios["saldo_compra"] = int(context.args[0]); guardar_precios(precios)
-    await update.message.reply_text(f"✅ Saldo COMPRA -> {precios['saldo_compra']} CUP")
+    try:
+        precios["saldo_compra"] = int(context.args[0]); guardar_precios(precios)
+        await update.message.reply_text(f"✅ Saldo COMPRA -> {precios['saldo_compra']} CUP")
+    except: await update.message.reply_text("⚠️ Usa solo números")
 
 async def cambiar_venta(update, context):
     if update.effective_user.id!= ADMIN_USER_ID: return
     if not context.args: return await update.message.reply_text(f"Venta saldo: {precios['saldo_venta']}\nUso: /venta 780")
-    precios["saldo_venta"] = int(context.args[0]); guardar_precios(precios)
-    await update.message.reply_text(f"✅ Saldo VENTA -> {precios['saldo_venta']} CUP")
+    try:
+        precios["saldo_venta"] = int(context.args[0]); guardar_precios(precios)
+        await update.message.reply_text(f"✅ Saldo VENTA -> {precios['saldo_venta']} CUP")
+    except: await update.message.reply_text("⚠️ Usa solo números")
 
 async def cambiar_usdtc(update, context):
     if update.effective_user.id!= ADMIN_USER_ID: return
     if not context.args: return await update.message.reply_text(f"Compra USDT: {precios['usdt_compra']}\nUso: /usdtc 360")
-    precios["usdt_compra"] = int(context.args[0]); guardar_precios(precios)
-    await update.message.reply_text(f"✅ USDT COMPRA -> {precios['usdt_compra']} CUP")
+    try:
+        precios["usdt_compra"] = int(context.args[0]); guardar_precios(precios)
+        await update.message.reply_text(f"✅ USDT COMPRA -> {precios['usdt_compra']} CUP")
+    except: await update.message.reply_text("⚠️ Usa solo números")
 
 async def cambiar_usdtv(update, context):
     if update.effective_user.id!= ADMIN_USER_ID: return
     if not context.args: return await update.message.reply_text(f"Venta USDT: {precios['usdt_venta']}\nUso: /usdtv 350")
-    precios["usdt_venta"] = int(context.args[0]); guardar_precios(precios)
-    await update.message.reply_text(f"✅ USDT VENTA -> {precios['usdt_venta']} CUP")
+    try:
+        precios["usdt_venta"] = int(context.args[0]); guardar_precios(precios)
+        await update.message.reply_text(f"✅ USDT VENTA -> {precios['usdt_venta']} CUP")
+    except: await update.message.reply_text("⚠️ Usa solo números")
 
 async def ver_precios(update, context):
     if update.effective_user.id!= ADMIN_USER_ID: return
-    await update.message.reply_text(f"📊 PRECIOS:\n\nSaldo Compra: {precios['saldo_compra']}\nSaldo Venta: {precios['saldo_venta']}\nUSDT Compra: {precios['usdt_compra']}\nUSDT Venta: {precios['usdt_venta']}")
+    await update.message.reply_text(f"📊 PRECIOS:\nSaldo Compra: {precios['saldo_compra']}\nSaldo Venta: {precios['saldo_venta']}\nUSDT Compra: {precios['usdt_compra']}\nUSDT Venta: {precios['usdt_venta']}")
 
 async def mostrar_menu(u, c):
     kb = [[InlineKeyboardButton("📲💳 Comprar saldo", callback_data="comprar_saldo")],[InlineKeyboardButton("💵📱 Vender saldo", callback_data="vender_saldo")],[InlineKeyboardButton("🚀🪙 Comprar USDT", callback_data="comprar_crypto")],[InlineKeyboardButton("💸🔗 Vender USDT", callback_data="vender_crypto")]]
@@ -70,134 +82,135 @@ async def soporte(u,c): await u.message.reply_text("📞 SOPORTE @TuUsuarioAdmin
 
 async def button(update, context):
     q=update.callback_query; await q.answer()
-    context.user_data.clear() # limpia flujos anteriores
+    if q.data.startswith("pagado_"):
+        try:
+            await q.edit_message_text(q.message.text + "\n\n✅ PAGADO ✓")
+        except: pass
+        return
+    if q.data == "menu":
+        await mostrar_menu(q, context); return
+
+    pedido_id = gen_id()
+    context.user_data.clear()
+    context.user_data["pedido_id"] = pedido_id
 
     if q.data=="comprar_saldo":
-        text=f"📲💳 **Comprar saldo**\n\n💵 360 CUP por {precios['saldo_compra']} CUP\n\n✍️ Escribe el MONTO que quieres comprar\n\n💳 Tarjeta: {TARJETA}\n📲 Móvil: {MOVIL}"
+        text=f"📲💳 **Comprar saldo** - `#{pedido_id}`\n\n💵 Precio: 360 = {precios['saldo_compra']} CUP\n\n✍️ Escribe cuanto saldo quieres\n_Ej: 360 o 500_"
         context.user_data["flow"]="compra_saldo"
     elif q.data=="vender_saldo":
-        text=f"💵📱 **Vender saldo**\n\n💳 360 CUP por {precios['saldo_venta']} CUP\n\n✍️ Escribe el MONTO que quieres vender\n\n📲 Transfiere a: {MOVIL}"
+        text=f"💵📱 **Vender saldo** - `#{pedido_id}`\n\n💳 Pagamos: 360 = {precios['saldo_venta']} CUP\n\n✍️ Escribe cuanto vas a vender"
         context.user_data["flow"]="venta_saldo"
     elif q.data=="comprar_crypto":
-        text=f"🚀🪙 **Comprar USDT (BEP20)**\n\n💵 Precio: {precios['usdt_compra']} CUP = 1 USDT\n\n✍️ ¿Cuántos USDT quieres comprar?\n_Ej: 10_"
+        text=f"🚀🪙 **Comprar USDT** - `#{pedido_id}`\n\n💵 Precio: {precios['usdt_compra']} CUP = 1 USDT\n\n✍️ ¿Cuántos USDT quieres?"
         context.user_data["flow"]="compra_usdt_monto"
     elif q.data=="vender_crypto":
-        text=f"💸🔗 **Vender USDT (BEP20)**\n\n💵 Precio: {precios['usdt_venta']} CUP = 1 USDT\n\n✍️ ¿Cuántos USDT quieres vender?\n_Ej: 20_"
+        text=f"💸🔗 **Vender USDT** - `#{pedido_id}`\n\n💵 Pagamos: {precios['usdt_venta']} CUP = 1 USDT\n\n✍️ ¿Cuántos USDT vendes?"
         context.user_data["flow"]="venta_usdt_monto"
-    elif q.data=="menu": await mostrar_menu(q,context); return
     else: return
     await q.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Atrás", callback_data="menu")]]), parse_mode="Markdown")
 
 async def recibir_mensaje(update, context):
-    usuario = update.effective_user.first_name or update.effective_user.username or "Usuario"
+    if not update.message: return
+    usuario = update.effective_user.first_name or "Usuario"
+    username = f"@{update.effective_user.username}" if update.effective_user.username else "sin username"
     uid = update.effective_user.id
     flow = context.user_data.get("flow")
+    pedido_id = context.user_data.get("pedido_id", "SIN-ID")
     msg_text = update.message.text or ""
+    if not flow: return await update.message.reply_text("Usa /tienda para empezar")
 
-    if not flow:
-        await update.message.reply_text("Usa /tienda para empezar")
-        return
+    def admin_header(tipo):
+        return f"🆕 #{pedido_id} - {tipo}\n👤 {usuario} {username}\n🆔 {uid}"
 
-    # --- COMPRAR SALDO ---
     if flow == "compra_saldo":
-        context.user_data["monto"] = msg_text
-        context.user_data["flow"] = "compra_saldo_captura"
-        await update.message.reply_text(f"✅ Monto: {msg_text}\n\nAhora transfiere a:\n💳 {TARJETA}\n📲 {MOVIL}\n\n📸 Manda la CAPTURA de la transferencia")
-        await context.bot.send_message(ADMIN_CHANNEL_ID, f"👤 {usuario} ({uid}) - COMPRA SALDO\nMonto: {msg_text}")
-
+        try:
+            monto = float(msg_text.replace(",","."))
+            total = (monto / 360) * precios['saldo_compra']
+            context.user_data["monto"] = monto; context.user_data["total_cup"] = total
+            context.user_data["flow"] = "compra_saldo_captura"
+            await update.message.reply_text(f"✅ #{pedido_id}\nQuieres {monto:.0f} saldo = {total:.0f} CUP\n\n💳 Transfiere {total:.0f} CUP a:\n`{TARJETA}`\n📲 {MOVIL}\n\n📸 Manda CAPTURA", parse_mode="Markdown")
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"{admin_header('COMPRA SALDO')}\nSaldo: {monto:.0f}\nTotal: {total:.0f} CUP", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(f"✅ Marcar {pedido_id} Pagado", callback_data=f"pagado_{pedido_id}")]]))
+        except: await update.message.reply_text("⚠️ Solo número. Ej: 360")
     elif flow == "compra_saldo_captura":
         if update.message.photo:
             await update.message.forward(chat_id=ADMIN_CHANNEL_ID)
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📸 CAPTURA #{pedido_id} de {usuario}")
             context.user_data["flow"] = "compra_saldo_telefono"
-            await update.message.reply_text("📸 Captura recibida ✅\n\n📲 Ahora escribe tu NÚMERO donde quieres el saldo")
-        else:
-            await update.message.reply_text("⚠️ Por favor manda la foto de la captura 📸")
-
+            await update.message.reply_text("📸 Captura recibida ✅\n\n📲 Escribe tu NÚMERO")
+        else: await update.message.reply_text("⚠️ Manda foto de la captura 📸")
     elif flow == "compra_saldo_telefono":
-        context.user_data["telefono"] = msg_text
         await update.message.forward(chat_id=ADMIN_CHANNEL_ID)
-        await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN COMPRA SALDO\n👤 {usuario}\nMonto: {context.user_data.get('monto')}\nTel: {msg_text}")
-        await update.message.reply_text("✅ Pedido registrado. Te avisaremos pronto.\n\nUsa /tienda para nuevo pedido")
+        await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN #{pedido_id}\n👤 {usuario}\nSaldo: {context.user_data.get('monto',0):.0f} = {context.user_data.get('total_cup',0):.0f} CUP\nTel: {msg_text}\n\n`{msg_text}`", parse_mode="Markdown")
+        await update.message.reply_text(f"✅ Pedido #{pedido_id} registrado. Le pagaremos en breve. Gracias por preferirnos 🙏\n\nUsa /tienda para nuevo pedido")
         context.user_data.clear()
-
-    # --- VENDER SALDO ---
     elif flow == "venta_saldo":
-        context.user_data["monto"] = msg_text
-        context.user_data["flow"] = "venta_saldo_captura"
-        await update.message.reply_text(f"✅ Monto: {msg_text}\n\nTransfiere el saldo a {MOVIL} y manda la CAPTURA 📸")
-        await context.bot.send_message(ADMIN_CHANNEL_ID, f"👤 {usuario} ({uid}) - VENDE SALDO\nMonto: {msg_text}")
-
+        try:
+            monto = float(msg_text.replace(",","."))
+            total = (monto / 360) * precios['saldo_venta']
+            context.user_data["monto"] = monto; context.user_data["total_cup"] = total
+            context.user_data["flow"] = "venta_saldo_captura"
+            await update.message.reply_text(f"✅ #{pedido_id}\nVendes {monto:.0f} saldo\n💰 Recibes: {total:.0f} CUP\n\n📲 Transfiere saldo a {MOVIL} y manda CAPTURA")
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"{admin_header('VENTA SALDO')}\nSaldo: {monto:.0f}\nA pagar: {total:.0f} CUP")
+        except: await update.message.reply_text("⚠️ Solo número. Ej: 360")
     elif flow == "venta_saldo_captura":
         if update.message.photo:
             await update.message.forward(chat_id=ADMIN_CHANNEL_ID)
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📸 CAPTURA #{pedido_id} de {usuario}")
             context.user_data["flow"] = "venta_saldo_datos"
-            await update.message.reply_text("📸 Captura ok ✅\n\n💳 Manda tu TARJETA y NÚMERO donde quieres el CUP")
-        else:
-            await update.message.reply_text("⚠️ Manda la foto 📸")
-
+            await update.message.reply_text(f"📸 Ok ✅\n\n💳 Manda TARJETA y NÚMERO donde te pagamos {context.user_data.get('total_cup',0):.0f} CUP")
+        else: await update.message.reply_text("⚠️ Manda foto 📸")
     elif flow == "venta_saldo_datos":
         await update.message.forward(chat_id=ADMIN_CHANNEL_ID)
-        await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN VENTA SALDO\n👤 {usuario}\nMonto: {context.user_data.get('monto')}\nDatos: {msg_text}")
-        await update.message.reply_text("✅ Registrado. Te pagaremos pronto. /tienda")
+        await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN #{pedido_id}\n👤 {usuario}\nVende: {context.user_data.get('monto',0):.0f}\nPagar: {context.user_data.get('total_cup',0):.0f} CUP\nDatos: {msg_text}\n\nCopiable:\n`{msg_text}`", parse_mode="Markdown")
+        await update.message.reply_text(f"✅ Pedido #{pedido_id} registrado. Le pagaremos en breve. Gracias por preferirnos 🙏\n\nUsa /tienda para nuevo pedido")
         context.user_data.clear()
-
-    # --- COMPRAR USDT ---
     elif flow == "compra_usdt_monto":
         try:
-            cantidad = float(msg_text.replace(",","."))
-            total_cup = cantidad * precios['usdt_compra']
-            context.user_data["usdt"] = cantidad
-            context.user_data["total_cup"] = total_cup
+            cant = float(msg_text.replace(",","."))
+            total = cant * precios['usdt_compra']
+            context.user_data["usdt"] = cant; context.user_data["total_cup"] = total
             context.user_data["flow"] = "compra_usdt_wallet"
-            await update.message.reply_text(f"✅ Quieres {cantidad} USDT\n💰 Total a pagar: {total_cup:.0f} CUP\n\n✍️ Ahora manda tu WALLET BEP20 donde recibirás los USDT")
-        except:
-            await update.message.reply_text("⚠️ Escribe solo el número. Ej: 10")
-
+            await update.message.reply_text(f"✅ #{pedido_id}\n{cant} USDT = {total:.0f} CUP\n\n✍️ Manda tu WALLET BEP20")
+        except: await update.message.reply_text("⚠️ Solo número. Ej: 10")
     elif flow == "compra_usdt_wallet":
         context.user_data["wallet_cliente"] = msg_text
         context.user_data["flow"] = "compra_usdt_captura"
-        await update.message.reply_text(f"✅ Wallet: {msg_text}\n\n💳 Transfiere {context.user_data['total_cup']:.0f} CUP a:\nTarjeta: {TARJETA}\nMóvil: {MOVIL}\n\n📸 Luego manda la CAPTURA y tu número")
-        await context.bot.send_message(ADMIN_CHANNEL_ID, f"👤 {usuario} ({uid}) - COMPRA USDT\nCantidad: {context.user_data['usdt']} USDT = {context.user_data['total_cup']:.0f} CUP\nWallet cliente: {msg_text}")
-
+        await update.message.reply_text(f"✅ Wallet guardada\n\n💳 Transfiere {context.user_data['total_cup']:.0f} CUP a:\n`{TARJETA}`\n📲 {MOVIL}\n\n📸 Manda CAPTURA", parse_mode="Markdown")
+        await context.bot.send_message(ADMIN_CHANNEL_ID, f"{admin_header('COMPRA USDT')}\nCantidad: {context.user_data['usdt']} USDT = {context.user_data['total_cup']:.0f} CUP")
+        await context.bot.send_message(ADMIN_CHANNEL_ID, f"👛 WALLET CLIENTE #{pedido_id} PARA COPIAR:\n\n`{msg_text}`", parse_mode="Markdown")
     elif flow == "compra_usdt_captura":
         if update.message.photo:
             await update.message.forward(chat_id=ADMIN_CHANNEL_ID)
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📸 CAPTURA #{pedido_id} - {usuario}")
             context.user_data["flow"] = "compra_usdt_final"
-            await update.message.reply_text("📸 Captura ok ✅\n\n📲 Escribe tu NÚMERO de contacto para confirmar")
-        else:
-            await update.message.reply_text("⚠️ Manda la captura 📸")
-
+            await update.message.reply_text("📸 Captura ✅\n\n📲 Escribe tu NÚMERO de contacto")
+        else: await update.message.reply_text("⚠️ Manda captura 📸")
     elif flow == "compra_usdt_final":
         await update.message.forward(chat_id=ADMIN_CHANNEL_ID)
-        await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN COMPRA USDT\n👤 {usuario}\nUSDT: {context.user_data['usdt']}\nTotal CUP: {context.user_data['total_cup']:.0f}\nWallet: {context.user_data['wallet_cliente']}\nContacto: {msg_text}")
-        await update.message.reply_text("✅ Pedido de USDT registrado. Verificaremos y te enviaremos. /tienda")
+        await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN #{pedido_id}\n👤 {usuario}\nUSDT: {context.user_data['usdt']}\nTotal: {context.user_data['total_cup']:.0f} CUP\nContacto: {msg_text}\nWallet: {context.user_data['wallet_cliente']}\n\nWallet copiable:\n`{context.user_data['wallet_cliente']}`", parse_mode="Markdown")
+        await update.message.reply_text(f"✅ Pedido #{pedido_id} registrado. Le pagaremos en breve. Gracias por preferirnos 🙏\n\nUsa /tienda para nuevo pedido")
         context.user_data.clear()
-
-    # --- VENDER USDT ---
     elif flow == "venta_usdt_monto":
         try:
-            cantidad = float(msg_text.replace(",","."))
-            total_cup = cantidad * precios['usdt_venta']
-            context.user_data["usdt"] = cantidad
-            context.user_data["total_cup"] = total_cup
+            cant = float(msg_text.replace(",","."))
+            total = cant * precios['usdt_venta']
+            context.user_data["usdt"] = cant; context.user_data["total_cup"] = total
             context.user_data["flow"] = "venta_usdt_captura"
-            await update.message.reply_text(f"✅ Venderás {cantidad} USDT\n💰 Recibirás: {total_cup:.0f} CUP\n\n🔗 Envía los {cantidad} USDT (BEP20) a esta wallet:\n\n`{WALLET_BEP20}`\n\n📸 Luego manda la CAPTURA del envío", parse_mode="Markdown")
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"👤 {usuario} ({uid}) - VENDE USDT\nCantidad: {cantidad} USDT = {total_cup:.0f} CUP")
-        except:
-            await update.message.reply_text("⚠️ Escribe solo el número. Ej: 20")
-
+            await update.message.reply_text(f"✅ #{pedido_id}\nVenderás {cant} USDT\n💰 Recibirás: {total:.0f} CUP")
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"🔗 Envía los {cant} USDT (BEP20) a:\n\n`{WALLET_BEP20}`\n\n👆 Toca para copiar\n\n📸 Luego manda CAPTURA", parse_mode="Markdown")
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"{admin_header('VENTA USDT')}\nCantidad: {cant} USDT = {total:.0f} CUP")
+        except: await update.message.reply_text("⚠️ Solo número. Ej: 20")
     elif flow == "venta_usdt_captura":
         if update.message.photo:
             await update.message.forward(chat_id=ADMIN_CHANNEL_ID)
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📸 CAPTURA #{pedido_id} - {usuario} - VENDE {context.user_data.get('usdt')} USDT")
             context.user_data["flow"] = "venta_usdt_datos"
-            await update.message.reply_text("📸 Captura ok ✅\n\n💳 Ahora manda tu TARJETA CUP y tu NÚMERO donde te pagamos los CUP")
-        else:
-            await update.message.reply_text("⚠️ Manda la foto de la transacción 📸")
-
+            await update.message.reply_text(f"📸 Ok ✅\n\n💳 Manda TARJETA y NÚMERO donde te pagamos {context.user_data.get('total_cup',0):.0f} CUP")
+        else: await update.message.reply_text("⚠️ Manda foto 📸")
     elif flow == "venta_usdt_datos":
         await update.message.forward(chat_id=ADMIN_CHANNEL_ID)
-        await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN VENTA USDT\n👤 {usuario}\nUSDT: {context.user_data['usdt']}\nRecibe: {context.user_data['total_cup']:.0f} CUP\nDatos pago: {msg_text}")
-        await update.message.reply_text("✅ Venta registrada. Verificaremos tu USDT y te transferimos. /tienda")
+        await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN #{pedido_id}\n👤 {usuario}\nVende: {context.user_data['usdt']} USDT\nRecibe: {context.user_data['total_cup']:.0f} CUP\nDatos: {msg_text}\n\nCopiable:\n`{msg_text}`", parse_mode="Markdown")
+        await update.message.reply_text(f"✅ Pedido #{pedido_id} registrado. Le pagaremos en breve. Gracias por preferirnos 🙏\n\nUsa /tienda para nuevo pedido")
         context.user_data.clear()
 
 def run_flask(): app_web.run(host='0.0.0.0', port=int(os.environ.get("PORT",10000)))
