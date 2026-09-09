@@ -11,6 +11,7 @@ ADMIN_USER_ID = 7450751212
 TARJETA = "9238-1299-7507-3018"
 MOVIL = "55348244"
 WALLET_BEP20 = "0x5Ba930B965f535c202D224f4AEC5745174C2F5e9"
+SOPORTE_USERNAME = "@AlvanisPivqvaplay"
 
 MENSAJE_FINAL = "✅ Pedido registrado. Le pagaremos en breve. Gracias por preferirnos 🙏\n\nUsa /tienda para nuevo pedido"
 
@@ -57,7 +58,9 @@ async def mostrar_menu(u,c):
     if isinstance(u,Update): await u.message.reply_text("🛍️ Elige:",reply_markup=InlineKeyboardMarkup(kb))
     else: await u.edit_message_text("🛍️ Elige:",reply_markup=InlineKeyboardMarkup(kb))
 async def tienda(u,c): await mostrar_menu(u,c)
-async def soporte(u,c): await u.message.reply_text("📞 @TuAdmin")
+
+async def soporte(u,c):
+    await u.message.reply_text(f"📞 SOPORTE OFICIAL\n\n👤 Dueño: {SOPORTE_USERNAME}\n\nSi tienes dudas escríbeme directo al privado 🙏", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💬 Hablar con Soporte", url="https://t.me/AlvanisPivqvaplay")]]))
 
 async def button(update, context):
     q=update.callback_query; await q.answer()
@@ -65,10 +68,9 @@ async def button(update, context):
     if data.startswith("confirmar_"):
         try:
             _, uid_str, pid = data.split("_",2)
-            await context.bot.send_message(chat_id=int(uid_str), text=f"✅ Pedido #{pid} - ¡Pago realizado! ✅\n\nGracias por preferirnos 🙏")
-            await q.edit_message_text(f"{q.message.text}\n\n✅ CONFIRMADO - #{pid}")
-        except Exception as e:
-            print(f"Error confirmar: {e}")
+            await context.bot.send_message(chat_id=int(uid_str), text=f"✅ Pedido #{pid} - ¡Pago realizado! ✅\n\nGracias por preferirnos 🙏\nUsa /tienda para nuevo pedido")
+            await q.edit_message_text(f"{q.message.text}\n\n✅ CONFIRMADO Y PAGADO - #{pid}")
+        except Exception as e: print(e)
         return
     if data=="menu": await mostrar_menu(q,context); return
     pid=gen_id()
@@ -95,14 +97,10 @@ async def recibir_mensaje(update, context):
     flow=context.user_data.get("flow")
     pid=context.user_data.get("pedido_id", gen_id())
     txt=update.message.text or ""
-    if not flow:
-        return await update.message.reply_text("Usa /tienda")
-
+    if not flow: return await update.message.reply_text("Usa /tienda")
     def header(t): return f"🆕 #{pid} - {t}\n👤 {usuario} {username}\n🆔 {uid}"
-    def btn_confirmar():
-        return InlineKeyboardMarkup([[InlineKeyboardButton(f"✅ Confirmar Pago #{pid}", callback_data=f"confirmar_{uid}_{pid}")]])
+    def btn_confirmar(): return InlineKeyboardMarkup([[InlineKeyboardButton(f"✅ Confirmar Pago #{pid}", callback_data=f"confirmar_{uid}_{pid}")]])
 
-    # COMPRAR SALDO
     if flow=="compra_saldo":
         try:
             monto=float(txt.replace(",","."))
@@ -113,22 +111,19 @@ async def recibir_mensaje(update, context):
         except: await update.message.reply_text("Solo número. Ej: 360")
     elif flow=="compra_saldo_captura":
         if update.message.photo:
-            try: await update.message.forward(chat_id=ADMIN_CHANNEL_ID)
-            except: pass
-            try: await context.bot.send_message(ADMIN_CHANNEL_ID, f"📸 CAPTURA #{pid} de {usuario}")
+            try: await update.message.forward(ADMIN_CHANNEL_ID)
             except: pass
             context.user_data["flow"]="compra_saldo_telefono"
             await update.message.reply_text("📸 Captura recibida ✅\n\nEscribe tu NÚMERO donde te enviamos el saldo")
         else: await update.message.reply_text("Manda foto 📸")
     elif flow=="compra_saldo_telefono":
-        # Primero avisamos al cliente SIEMPRE, aunque falle el grupo
         await update.message.reply_text(MENSAJE_FINAL)
         try:
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nSaldo: {context.user_data.get('monto',0):.0f} = {context.user_data.get('total_cup',0):.0f} CUP\nTel: {txt}\nCopiable: {txt}", reply_markup=btn_confirmar())
-        except Exception as e: print(f"Error grupo: {e}")
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nSaldo: {context.user_data.get('monto',0):.0f} = {context.user_data.get('total_cup',0):.0f} CUP", reply_markup=btn_confirmar())
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📱 NUMERO COPIABLE #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
+        except: pass
         context.user_data.clear()
 
-    # VENDER SALDO
     elif flow=="venta_saldo":
         try:
             monto=float(txt.replace(",","."))
@@ -139,9 +134,7 @@ async def recibir_mensaje(update, context):
         except: await update.message.reply_text("Solo número. Ej: 360")
     elif flow=="venta_saldo_captura":
         if update.message.photo:
-            try: await update.message.forward(chat_id=ADMIN_CHANNEL_ID)
-            except: pass
-            try: await context.bot.send_message(ADMIN_CHANNEL_ID, f"📸 CAPTURA #{pid} de {usuario}")
+            try: await update.message.forward(ADMIN_CHANNEL_ID)
             except: pass
             context.user_data["flow"]="venta_saldo_datos"
             await update.message.reply_text(f"📸 Captura recibida ✅\n\nManda tu TARJETA CUP y tu NÚMERO a confirmar para pagarte los {context.user_data.get('total_cup',0):.0f} CUP")
@@ -149,11 +142,11 @@ async def recibir_mensaje(update, context):
     elif flow=="venta_saldo_datos":
         await update.message.reply_text(MENSAJE_FINAL)
         try:
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {context.user_data.get('monto',0):.0f}\nPagar: {context.user_data.get('total_cup',0):.0f} CUP\nDatos: {txt}\nCopiable: {txt}", reply_markup=btn_confirmar())
-        except Exception as e: print(f"Error grupo: {e}")
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {context.user_data.get('monto',0):.0f}\nA pagar: {context.user_data.get('total_cup',0):.0f} CUP", reply_markup=btn_confirmar())
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 TARJETA Y NUMERO COPIABLE #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
+        except: pass
         context.user_data.clear()
 
-    # COMPRAR USDT
     elif flow=="compra_usdt_monto":
         try:
             cant=float(txt.replace(",","."))
@@ -164,13 +157,13 @@ async def recibir_mensaje(update, context):
     elif flow=="compra_usdt_wallet":
         context.user_data["wallet_cliente"]=txt; context.user_data["flow"]="compra_usdt_captura"
         await update.message.reply_text(f"✅ Wallet guardada\n\nTransfiere {context.user_data['total_cup']:.0f} CUP a:\nTarjeta: {TARJETA}\nMovil: {MOVIL}\n\nManda CAPTURA")
-        try: await context.bot.send_message(ADMIN_CHANNEL_ID, f"{header('COMPRA USDT')}\nCantidad: {context.user_data['usdt']} USDT\nWallet: {txt}")
+        try:
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"{header('COMPRA USDT')}\nCantidad: {context.user_data['usdt']} USDT = {context.user_data['total_cup']:.0f} CUP")
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"👛 WALLET COPIABLE #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
         except: pass
     elif flow=="compra_usdt_captura":
         if update.message.photo:
-            try: await update.message.forward(chat_id=ADMIN_CHANNEL_ID)
-            except: pass
-            try: await context.bot.send_message(ADMIN_CHANNEL_ID, f"📸 CAPTURA #{pid} - {usuario}")
+            try: await update.message.forward(ADMIN_CHANNEL_ID)
             except: pass
             context.user_data["flow"]="compra_usdt_final"
             await update.message.reply_text("📸 Captura ✅\n\nEscribe tu NÚMERO de contacto")
@@ -178,11 +171,11 @@ async def recibir_mensaje(update, context):
     elif flow=="compra_usdt_final":
         await update.message.reply_text(MENSAJE_FINAL)
         try:
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nUSDT: {context.user_data['usdt']}\nTotal: {context.user_data['total_cup']:.0f} CUP\nContacto: {txt}\nWallet: {context.user_data['wallet_cliente']}", reply_markup=btn_confirmar())
-        except Exception as e: print(f"Error grupo: {e}")
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nUSDT: {context.user_data['usdt']}\nTotal: {context.user_data['total_cup']:.0f} CUP\nContacto: {txt}", reply_markup=btn_confirmar())
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"👛 WALLET + CONTACTO COPIABLE #{pid}:\nWallet: <code>{context.user_data['wallet_cliente']}</code>\nNumero: <code>{txt}</code>", parse_mode="HTML")
+        except: pass
         context.user_data.clear()
 
-    # VENDER USDT
     elif flow=="venta_usdt_monto":
         try:
             cant=float(txt.replace(",","."))
@@ -193,9 +186,7 @@ async def recibir_mensaje(update, context):
         except: await update.message.reply_text("Solo número. Ej: 20")
     elif flow=="venta_usdt_captura":
         if update.message.photo:
-            try: await update.message.forward(chat_id=ADMIN_CHANNEL_ID)
-            except: pass
-            try: await context.bot.send_message(ADMIN_CHANNEL_ID, f"📸 CAPTURA #{pid} - VENDE {context.user_data.get('usdt')} USDT")
+            try: await update.message.forward(ADMIN_CHANNEL_ID)
             except: pass
             context.user_data["flow"]="venta_usdt_datos"
             await update.message.reply_text(f"📸 Captura recibida ✅\n\nManda tu TARJETA CUP y tu NÚMERO a confirmar para pagarte los {context.user_data.get('total_cup',0):.0f} CUP")
@@ -203,8 +194,9 @@ async def recibir_mensaje(update, context):
     elif flow=="venta_usdt_datos":
         await update.message.reply_text(MENSAJE_FINAL)
         try:
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {context.user_data['usdt']} USDT\nRecibe: {context.user_data['total_cup']:.0f} CUP\nDatos: {txt}\nCopiable: {txt}", reply_markup=btn_confirmar())
-        except Exception as e: print(f"Error grupo: {e}")
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {context.user_data['usdt']} USDT\nRecibe: {context.user_data['total_cup']:.0f} CUP", reply_markup=btn_confirmar())
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 DATOS COPIABLES #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
+        except: pass
         context.user_data.clear()
 
 def run_flask(): app_web.run(host='0.0.0.0',port=int(os.environ.get("PORT",10000)))
@@ -220,5 +212,5 @@ def main():
     app.add_handler(CommandHandler("precios",ver_precios))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler(filters.ALL,recibir_mensaje))
-    print("🤖 Bot PRO FIX activo..."); app.run_polling()
+    print("🤖 Bot FINAL con soporte @AlvanisPivqvaplay"); app.run_polling()
 if __name__=="__main__": main()
