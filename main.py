@@ -7,21 +7,16 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 TOKEN = os.environ.get("TOKEN")
 ADMIN_CHANNEL_ID = -1003602948532
 ADMIN_USER_ID = 7450751212
-
 TARJETA = "9238-1299-7507-3018"
 MOVIL = "55348244"
 WALLET_BEP20 = "0x5Ba930B965f535c202D224f4AEC5745174C2F5e9"
 SOPORTE_USERNAME = "@AlvanisPivqvaplay"
-
 MENSAJE_FINAL = "✅ Pedido registrado. Le pagaremos en breve. Gracias por preferirnos 🙏\n\nUsa /tienda para nuevo pedido"
 ADVERTENCIA = "⚠️ ATENCIÓN:\nLa captura debe verse con TOTAL CLARIDAD (monto, fecha, referencia).\n\n🚫 Cualquier intento de engaño, captura falsa, editada o estafa = BANEO PERMANENTE y serás reportado en todos los grupos y canales."
 MENSAJE_AGOTADO = "⚠️ Saldo ETECSA agotado por hoy límite 3\nPor favor vuelve mañana para realizar tu pedido. Te esperamos 🙏"
-
 app_web = Flask(__name__)
 @app_web.route('/')
 def home(): return "Bot activo"
-
-# --- PRECIOS ---
 PRECIOS_FILE = "precios.json"
 lock_precios = Lock()
 def cargar_precios():
@@ -35,34 +30,26 @@ def guardar_precios(d):
         with open(PRECIOS_FILE, "w", encoding="utf-8") as f: json.dump(d, f)
 precios = cargar_precios()
 def gen_id(): return f"{random.randint(1000, 9999)}"
-
-# --- NUEVO: CONTADOR DE TRANSFERENCIAS ETECSA ---
 TRANSFER_FILE = "transferencias.json"
 LIMITE_DIARIO = 3
 lock_transfer = Lock()
-
 def cargar_transfer():
     if not os.path.exists(TRANSFER_FILE):
         return {"usadas": 0, "fecha": str(datetime.date.today())}
     try:
         with open(TRANSFER_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-        # Reset automático si cambió el día
         if data.get("fecha")!= str(datetime.date.today()):
             return {"usadas": 0, "fecha": str(datetime.date.today())}
         return data
     except:
         return {"usadas": 0, "fecha": str(datetime.date.today())}
-
 def guardar_transfer(data):
     with lock_transfer:
         with open(TRANSFER_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f)
-
 PENDIENTES = {}
 lock_pendientes = Lock()
-
-# --- COMANDOS ADMIN PRECIOS ---
 async def cambiar_saldo(u,c):
     if u.effective_user.id!= ADMIN_USER_ID: return
     if not c.args: return await u.message.reply_text(f"Actual: {precios['saldo_compra']}\nUso: /saldo 950")
@@ -82,8 +69,6 @@ async def cambiar_usdtv(u,c):
 async def ver_precios(u,c):
     if u.effective_user.id!= ADMIN_USER_ID: return
     await u.message.reply_text(f"PRECIOS:\nCompra saldo: {precios['saldo_compra']}\nVenta saldo: {precios['saldo_venta']}\nUSDT Compra: {precios['usdt_compra']}\nUSDT Venta: {precios['usdt_venta']}")
-
-# --- NUEVO: COMANDOS CONTADOR ---
 async def cmd_gaste1(u,c):
     if u.effective_user.id!= ADMIN_USER_ID: return
     data = cargar_transfer()
@@ -91,28 +76,22 @@ async def cmd_gaste1(u,c):
     data["fecha"] = str(datetime.date.today())
     guardar_transfer(data)
     await u.message.reply_text(f"✅ Anotado. Hoy: {data['usadas']}/{LIMITE_DIARIO} usadas. Te quedan {LIMITE_DIARIO - data['usadas']}")
-
 async def cmd_reset(u,c):
     if u.effective_user.id!= ADMIN_USER_ID: return
     data = {"usadas": 0, "fecha": str(datetime.date.today())}
     guardar_transfer(data)
     await u.message.reply_text(f"♻️ Contador reseteado a 0/{LIMITE_DIARIO}. Saldo desbloqueado.")
-
 async def cmd_estado(u,c):
     if u.effective_user.id!= ADMIN_USER_ID: return
     data = cargar_transfer()
     await u.message.reply_text(f"📊 ESTADO HOY {data['fecha']}:\nUsadas: {data['usadas']}/{LIMITE_DIARIO}\nQuedan: {LIMITE_DIARIO - data['usadas']}")
-
 async def mostrar_menu(u,c):
     kb=[[InlineKeyboardButton("📲💳 Comprar saldo",callback_data="comprar_saldo")],[InlineKeyboardButton("💵📱 Vender saldo",callback_data="vender_saldo")],[InlineKeyboardButton("🚀🪙 Comprar USDT",callback_data="comprar_crypto")],[InlineKeyboardButton("💸🔗 Vender USDT",callback_data="vender_crypto")]]
     if isinstance(u,Update): await u.message.reply_text("🛍️ Elige:",reply_markup=InlineKeyboardMarkup(kb))
     else: await u.edit_message_text("🛍️ Elige:",reply_markup=InlineKeyboardMarkup(kb))
 async def tienda(u,c): await mostrar_menu(u,c)
-
 async def soporte(u,c):
-    await u.message.reply_text(f"📞 SOPORTE OFICIAL\n\n👤 Dueño: {SOPORTE_USERNAME}\n\nSi tienes dudas escríbeme directo al privado 🙏", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💬 Hablar con Soporte", url="https://t.me/AlvanisPivqvaplay")]]))
-
-async def button(update, context):
+    await u.message.reply_text(f"📞 SOPORTE OFICIAL\n\n👤 Dueño: {SOPORTE_USERNAME}\n\nSi tienes dudas escríbeme directo al privado 🙏", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💬 Hablar con Soporte", url="https://t.me/AlvanisPivqvaplay")]]))async def button(update, context):
     q=update.callback_query; await q.answer()
     data=q.data
     if data.startswith("confirmar_"):
@@ -122,7 +101,6 @@ async def button(update, context):
             await q.edit_message_text(f"{q.message.text}\n\n✅ CONFIRMADO Y PAGADO - #{pid}")
         except Exception as e: print(e)
         return
-
     if data.startswith("aprobar_"):
         try:
             _, uid_str, pid = data.split("_",2)
@@ -157,12 +135,11 @@ async def button(update, context):
                 user_data["usdt"] = info["monto"]
                 user_data["total_cup"] = info["total"]
                 user_data["pedido_id"] = pid
-                await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\nVenderás {info['monto']} USDT\nRecibirás: {info['total']:.0f} CUP\n\nEnvía los {info['monto']} USDT a:\n{WALLET_BEP20}\n\n{ADVERTENCIA}\n\nLuego manda CAPTURA 📸")
+                await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\nVenderás {info['monto']} USDT\nRecibirás: {info['total']:.0f} CUP\n\nEnvía los {info['monto']} USDT a:\n<code>{WALLET_BEP20}</code>\n\n{ADVERTENCIA}\n\nLuego manda CAPTURA 📸", parse_mode="HTML")
             context.application.user_data[uid] = user_data
             await q.edit_message_text(f"{q.message.text}\n\n✅ APROBADO POR TI - #{pid}")
         except Exception as e: print(f"Error aprobar: {e}")
         return
-
     if data.startswith("rechazar_"):
         try:
             _, uid_str, pid = data.split("_",2)
@@ -175,13 +152,10 @@ async def button(update, context):
             await q.edit_message_text(f"{q.message.text}\n\n❌ RECHAZADO POR TI - #{pid}")
         except Exception as e: print(f"Error rechazar: {e}")
         return
-
     if data=="menu": await mostrar_menu(q,context); return
     pid=gen_id()
     context.user_data.clear()
     context.user_data["pedido_id"]=pid
-
-    # --- NUEVO: BLOQUEO DE COMPRAR SALDO ---
     if data=="comprar_saldo":
         trans = cargar_transfer()
         if trans["usadas"] >= LIMITE_DIARIO:
@@ -207,6 +181,7 @@ async def recibir_mensaje(update, context):
     flow=context.user_data.get("flow")
     pid=context.user_data.get("pedido_id", gen_id())
     txt=update.message.text or ""
+    if txt.startswith("/"): return
     if not flow: return await update.message.reply_text("Usa /tienda")
     def header(t): return f"🆕 #{pid} - {t}\n👤 {usuario} {username}\n🆔 {uid}"
     def btn_confirmar(): return InlineKeyboardMarkup([[InlineKeyboardButton(f"✅ Confirmar Pago #{pid}", callback_data=f"confirmar_{uid}_{pid}")]])
@@ -215,7 +190,6 @@ async def recibir_mensaje(update, context):
             [InlineKeyboardButton(f"✅ APROBAR #{pid}", callback_data=f"aprobar_{uid}_{pid}"),
              InlineKeyboardButton(f"❌ RECHAZAR", callback_data=f"rechazar_{uid}_{pid}")]
         ])
-
     if flow=="compra_saldo":
         try:
             monto=float(txt.replace(",","."))
@@ -225,7 +199,6 @@ async def recibir_mensaje(update, context):
             await update.message.reply_text(f"⏳ #{pid}\nSolicitud de {monto:.0f} saldo = {total:.0f} CUP enviada a revisión.\nTe avisamos cuando sea aprobada.")
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"🔔 SOLICITUD PENDIENTE #{pid}\n{header('COMPRA SALDO')}\nSaldo: {monto:.0f}\nTotal: {total:.0f} CUP\n\n¿Aprobar?", reply_markup=btn_aprobacion())
         except: await update.message.reply_text("Solo número. Ej: 360")
-
     elif flow=="compra_saldo_captura":
         if update.message.photo:
             try: await update.message.forward(ADMIN_CHANNEL_ID)
@@ -240,7 +213,6 @@ async def recibir_mensaje(update, context):
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"📱 NUMERO COPIABLE #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
         except: pass
         context.user_data.clear()
-
     elif flow=="venta_saldo":
         try:
             monto=float(txt.replace(",","."))
@@ -264,7 +236,6 @@ async def recibir_mensaje(update, context):
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 TARJETA Y NUMERO COPIABLE #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
         except: pass
         context.user_data.clear()
-
     elif flow=="compra_usdt_monto":
         try:
             cant=float(txt.replace(",","."))
@@ -295,7 +266,6 @@ async def recibir_mensaje(update, context):
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"👛 WALLET + CONTACTO COPIABLE #{pid}:\nWallet: <code>{context.user_data['wallet_cliente']}</code>\nNumero: <code>{txt}</code>", parse_mode="HTML")
         except: pass
         context.user_data.clear()
-
     elif flow=="venta_usdt_monto":
         try:
             cant=float(txt.replace(",","."))
@@ -323,9 +293,6 @@ async def recibir_mensaje(update, context):
 def run_flask(): app_web.run(host='0.0.0.0',port=int(os.environ.get("PORT",10000)))
 def main():
     Thread(target=run_flask,daemon=True).start()
-    app=Application.builder().token(TOKEN).read_timeout(60)def run_flask(): app_web.run(host='0.0.0.0',port=int(os.environ.get("PORT",10000)))
-def main():
-    Thread(target=run_flask,daemon=True).start()
     app=Application.builder().token(TOKEN).read_timeout(60).write_timeout(60).connect_timeout(60).build()
     app.add_handler(CommandHandler("tienda",tienda))
     app.add_handler(CommandHandler("soporte",soporte))
@@ -339,5 +306,5 @@ def main():
     app.add_handler(CommandHandler("estado",cmd_estado))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_mensaje))
-    print("🤖 Bot FINAL con contador + wallet copiable"); app.run_polling()
+    print("🤖 Bot FINAL FIJO - gaste1 OK + wallet copiable"); app.run_polling()
 if __name__=="__main__": main()
