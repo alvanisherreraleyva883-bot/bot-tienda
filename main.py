@@ -1,4 +1,4 @@
-import os, json, random
+import os, json, random, datetime
 from flask import Flask
 from threading import Thread, Lock
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -15,11 +15,13 @@ SOPORTE_USERNAME = "@AlvanisPivqvaplay"
 
 MENSAJE_FINAL = "✅ Pedido registrado. Le pagaremos en breve. Gracias por preferirnos 🙏\n\nUsa /tienda para nuevo pedido"
 ADVERTENCIA = "⚠️ ATENCIÓN:\nLa captura debe verse con TOTAL CLARIDAD (monto, fecha, referencia).\n\n🚫 Cualquier intento de engaño, captura falsa, editada o estafa = BANEO PERMANENTE y serás reportado en todos los grupos y canales."
+MENSAJE_AGOTADO = "⚠️ Saldo ETECSA agotado por hoy límite 3\nPor favor vuelve mañana para realizar tu pedido. Te esperamos 🙏"
 
 app_web = Flask(__name__)
 @app_web.route('/')
 def home(): return "Bot activo"
 
+# --- PRECIOS ---
 PRECIOS_FILE = "precios.json"
 lock_precios = Lock()
 def cargar_precios():
@@ -34,9 +36,33 @@ def guardar_precios(d):
 precios = cargar_precios()
 def gen_id(): return f"{random.randint(1000, 9999)}"
 
+# --- NUEVO: CONTADOR DE TRANSFERENCIAS ETECSA ---
+TRANSFER_FILE = "transferencias.json"
+LIMITE_DIARIO = 3
+lock_transfer = Lock()
+
+def cargar_transfer():
+    if not os.path.exists(TRANSFER_FILE):
+        return {"usadas": 0, "fecha": str(datetime.date.today())}
+    try:
+        with open(TRANSFER_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        # Reset automático si cambió el día
+        if data.get("fecha")!= str(datetime.date.today()):
+            return {"usadas": 0, "fecha": str(datetime.date.today())}
+        return data
+    except:
+        return {"usadas": 0, "fecha": str(datetime.date.today())}
+
+def guardar_transfer(data):
+    with lock_transfer:
+        with open(TRANSFER_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
 PENDIENTES = {}
 lock_pendientes = Lock()
 
+# --- COMANDOS ADMIN PRECIOS ---
 async def cambiar_saldo(u,c):
     if u.effective_user.id!= ADMIN_USER_ID: return
     if not c.args: return await u.message.reply_text(f"Actual: {precios['saldo_compra']}\nUso: /saldo 950")
@@ -56,6 +82,26 @@ async def cambiar_usdtv(u,c):
 async def ver_precios(u,c):
     if u.effective_user.id!= ADMIN_USER_ID: return
     await u.message.reply_text(f"PRECIOS:\nCompra saldo: {precios['saldo_compra']}\nVenta saldo: {precios['saldo_venta']}\nUSDT Compra: {precios['usdt_compra']}\nUSDT Venta: {precios['usdt_venta']}")
+
+# --- NUEVO: COMANDOS CONTADOR ---
+async def cmd_gaste1(u,c):
+    if u.effective_user.id!= ADMIN_USER_ID: return
+    data = cargar_transfer()
+    data["usadas"] = min(data["usadas"] + 1, LIMITE_DIARIO)
+    data["fecha"] = str(datetime.date.today())
+    guardar_transfer(data)
+    await u.message.reply_text(f"✅ Anotado. Hoy: {data['usadas']}/{LIMITE_DIARIO} usadas. Te quedan {LIMITE_DIARIO - data['usadas']}")
+
+async def cmd_reset(u,c):
+    if u.effective_user.id!= ADMIN_USER_ID: return
+    data = {"usadas": 0, "fecha": str(datetime.date.today())}
+    guardar_transfer(data)
+    await u.message.reply_text(f"♻️ Contador reseteado a 0/{LIMITE_DIARIO}. Saldo desbloqueado.")
+
+async def cmd_estado(u,c):
+    if u.effective_user.id!= ADMIN_USER_ID: return
+    data = cargar_transfer()
+    await u.message.reply_text(f"📊 ESTADO HOY {data['fecha']}:\nUsadas: {data['usadas']}/{LIMITE_DIARIO}\nQuedan: {LIMITE_DIARIO - data['usadas']}")
 
 async def mostrar_menu(u,c):
     kb=[[InlineKeyboardButton("📲💳 Comprar saldo",callback_data="comprar_saldo")],[InlineKeyboardButton("💵📱 Vender saldo",callback_data="vender_saldo")],[InlineKeyboardButton("🚀🪙 Comprar USDT",callback_data="comprar_crypto")],[InlineKeyboardButton("💸🔗 Vender USDT",callback_data="vender_crypto")]]
@@ -134,7 +180,13 @@ async def button(update, context):
     pid=gen_id()
     context.user_data.clear()
     context.user_data["pedido_id"]=pid
+
+    # --- NUEVO: BLOQUEO DE COMPRAR SALDO ---
     if data=="comprar_saldo":
+        trans = cargar_transfer()
+        if trans["usadas"] >= LIMITE_DIARIO:
+            await q.edit_message_text(MENSAJE_AGOTADO, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Volver",callback_data="menu")]]))
+            return
         context.user_data["flow"]="compra_saldo"
         await q.edit_message_text(f"📲💳 Comprar saldo - #{pid}\n\n💵 360 = {precios['saldo_compra']} CUP\n\nEscribe cuánto quieres:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Atrás",callback_data="menu")]]))
     elif data=="vender_saldo":
@@ -271,6 +323,9 @@ async def recibir_mensaje(update, context):
 def run_flask(): app_web.run(host='0.0.0.0',port=int(os.environ.get("PORT",10000)))
 def main():
     Thread(target=run_flask,daemon=True).start()
+    app=Application.builder().token(TOKEN).read_timeout(60)def run_flask(): app_web.run(host='0.0.0.0',port=int(os.environ.get("PORT",10000)))
+def main():
+    Thread(target=run_flask,daemon=True).start()
     app=Application.builder().token(TOKEN).read_timeout(60).write_timeout(60).connect_timeout(60).build()
     app.add_handler(CommandHandler("tienda",tienda))
     app.add_handler(CommandHandler("soporte",soporte))
@@ -279,7 +334,10 @@ def main():
     app.add_handler(CommandHandler("usdtc",cambiar_usdtc))
     app.add_handler(CommandHandler("usdtv",cambiar_usdtv))
     app.add_handler(CommandHandler("precios",ver_precios))
+    app.add_handler(CommandHandler("gaste1",cmd_gaste1))
+    app.add_handler(CommandHandler("reset",cmd_reset))
+    app.add_handler(CommandHandler("estado",cmd_estado))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler(filters.ALL,recibir_mensaje))
-    print("🤖 Bot FINAL con aprobación + advertencia"); app.run_polling()
+    print("🤖 Bot FINAL con contador + wallet copiable"); app.run_polling()
 if __name__=="__main__": main()
