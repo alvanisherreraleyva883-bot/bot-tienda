@@ -338,6 +338,6 @@ def main():
     app.add_handler(CommandHandler("reset",cmd_reset))
     app.add_handler(CommandHandler("estado",cmd_estado))
     app.add_handler(CallbackQueryHandler(button))
-    app.add_handler(MessageHandler(filters.ALL,recibir_mensaje))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_mensaje))
     print("🤖 Bot FINAL con contador + wallet copiable"); app.run_polling()
 if __name__=="__main__": main()
