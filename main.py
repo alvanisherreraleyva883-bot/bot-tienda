@@ -2,7 +2,7 @@ import os, json, random, datetime
 from flask import Flask
 from threading import Thread, Lock
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
 TOKEN = os.environ.get("TOKEN")
 ADMIN_CHANNEL_ID = -1003602948532
@@ -91,7 +91,8 @@ async def mostrar_menu(u,c):
     else: await u.edit_message_text("🛍️ Elige:",reply_markup=InlineKeyboardMarkup(kb))
 async def tienda(u,c): await mostrar_menu(u,c)
 async def soporte(u,c):
-    await u.message.reply_text(f"📞 SOPORTE OFICIAL\n\n👤 Dueño: {SOPORTE_USERNAME}\n\nSi tienes dudas escríbeme directo al privado 🙏", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💬 Hablar con Soporte", url="https://t.me/AlvanisPivqvaplay")]]))async def button(update, context):
+    await u.message.reply_text(f"📞 SOPORTE OFICIAL\n\n👤 Dueño: {SOPORTE_USERNAME}\n\nSi tienes dudas escríbeme directo al privado 🙏", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💬 Hablar con Soporte", url="https://t.me/AlvanisPivqvaplay")]]))
+async def button(update, context):
     q=update.callback_query; await q.answer()
     data=q.data
     if data.startswith("confirmar_"):
@@ -172,7 +173,6 @@ async def soporte(u,c):
     elif data=="vender_crypto":
         context.user_data["flow"]="venta_usdt_monto"
         await q.edit_message_text(f"💸🔗 Vender USDT - #{pid}\n\nPagamos: {precios['usdt_venta']} CUP = 1 USDT\n\n¿Cuántos vendes?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Atrás",callback_data="menu")]]))
-
 async def recibir_mensaje(update, context):
     if not update.message: return
     usuario=update.effective_user.first_name or "Usuario"
@@ -186,10 +186,7 @@ async def recibir_mensaje(update, context):
     def header(t): return f"🆕 #{pid} - {t}\n👤 {usuario} {username}\n🆔 {uid}"
     def btn_confirmar(): return InlineKeyboardMarkup([[InlineKeyboardButton(f"✅ Confirmar Pago #{pid}", callback_data=f"confirmar_{uid}_{pid}")]])
     def btn_aprobacion():
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"✅ APROBAR #{pid}", callback_data=f"aprobar_{uid}_{pid}"),
-             InlineKeyboardButton(f"❌ RECHAZAR", callback_data=f"rechazar_{uid}_{pid}")]
-        ])
+        return InlineKeyboardMarkup([[InlineKeyboardButton(f"✅ APROBAR #{pid}", callback_data=f"aprobar_{uid}_{pid}"), InlineKeyboardButton(f"❌ RECHAZAR", callback_data=f"rechazar_{uid}_{pid}")]])
     if flow=="compra_saldo":
         try:
             monto=float(txt.replace(",","."))
@@ -289,7 +286,6 @@ async def recibir_mensaje(update, context):
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 DATOS COPIABLES #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
         except: pass
         context.user_data.clear()
-
 def run_flask(): app_web.run(host='0.0.0.0',port=int(os.environ.get("PORT",10000)))
 def main():
     Thread(target=run_flask,daemon=True).start()
@@ -306,5 +302,5 @@ def main():
     app.add_handler(CommandHandler("estado",cmd_estado))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_mensaje))
-    print("🤖 Bot FINAL FIJO - gaste1 OK + wallet copiable"); app.run_polling()
+    print("🤖 Bot FINAL FIJO"); app.run_polling()
 if __name__=="__main__": main()
