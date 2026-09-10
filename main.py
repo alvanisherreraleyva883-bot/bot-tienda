@@ -3,7 +3,6 @@ from flask import Flask
 from threading import Thread, Lock
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
-
 TOKEN = os.environ.get("TOKEN")
 ADMIN_CHANNEL_ID = -1003602948532
 ADMIN_USER_ID = 7450751212
@@ -301,6 +300,6 @@ def main():
     app.add_handler(CommandHandler("reset",cmd_reset))
     app.add_handler(CommandHandler("estado",cmd_estado))
     app.add_handler(CallbackQueryHandler(button))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_mensaje))
-    print("🤖 Bot FINAL FIJO"); app.run_polling()
+    app.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, recibir_mensaje))
+    print("🤖 Bot FINAL FIX FOTO OK"); app.run_polling()
 if __name__=="__main__": main()
