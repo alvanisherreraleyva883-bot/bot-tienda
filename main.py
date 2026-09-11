@@ -29,7 +29,6 @@ def guardar_precios(d):
         with open(PRECIOS_FILE, "w", encoding="utf-8") as f: json.dump(d, f)
 precios = cargar_precios()
 
-# --- INICIO NUEVO: SISTEMA DE TIENDA ABIERTA/CERRADA ---
 TIENDA_FILE = "tienda.json"
 lock_tienda = Lock()
 def cargar_tienda():
@@ -67,8 +66,6 @@ async def cmd_abrir(u,c):
     tiendaCerrada = False
     guardar_tienda(False)
     await u.message.reply_text("🔓 CubanStore ABIERTA correctamente")
-
-# --- FIN NUEVO ---
 
 def gen_id(): return f"{random.randint(1000, 9999)}"
 TRANSFER_FILE = "transferencias.json"
@@ -127,7 +124,6 @@ async def cmd_estado(u,c):
     data = cargar_transfer()
     await u.message.reply_text(f"📊 ESTADO HOY {data['fecha']}:\nUsadas: {data['usadas']}/{LIMITE_DIARIO}\nQuedan: {LIMITE_DIARIO - data['usadas']}\n\n🏪 Tienda: {'🔒 CERRADA' if tiendaCerrada else '🔓 ABIERTA'}")
 async def mostrar_menu(u,c):
-    # BLOQUEO TAMBIEN EN /tienda
     if tiendaCerrada:
         if isinstance(u,Update):
             await u.message.reply_text(MENSAJE_CERRADO)
@@ -178,13 +174,13 @@ async def button(update, context):
                 user_data["usdt"] = info["monto"]
                 user_data["total_cup"] = info["total"]
                 user_data["pedido_id"] = pid
-                await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\n{info['monto']} USDT = {info['total']:.0f} CUP\n\nManda tu WALLET BEP20")
+                await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\n{info['monto']} USDT = {info['total']:.0f} CUP\n\n🌐 Red: BEP20 (BSC)\nManda tu WALLET BEP20")
             elif tipo == "venta_usdt":
                 user_data["flow"] = "venta_usdt_captura"
                 user_data["usdt"] = info["monto"]
                 user_data["total_cup"] = info["total"]
                 user_data["pedido_id"] = pid
-                await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\nVenderás {info['monto']} USDT\nRecibirás: {info['total']:.0f} CUP\n\nEnvía los {info['monto']} USDT a:\n<code>{WALLET_BEP20}</code>\n\n{ADVERTENCIA}\n\nLuego manda CAPTURA 📸", parse_mode="HTML")
+                await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\nVenderás {info['monto']} USDT\nRecibirás: {info['total']:.0f} CUP\n\n🌐 Red: BEP20 (BSC) - OBLIGATORIO\nEnvía los {info['monto']} USDT a:\n<code>{WALLET_BEP20}</code>\n\n⚠️ Solo BEP20, si envías por otra red se pierde el dinero\n\n{ADVERTENCIA}\n\nLuego manda CAPTURA 📸", parse_mode="HTML")
             context.application.user_data[uid] = user_data
             await q.edit_message_text(f"{q.message.text}\n\n✅ APROBADO POR TI - #{pid}")
         except Exception as e: print(f"Error aprobar: {e}")
@@ -203,11 +199,9 @@ async def button(update, context):
         return
     if data=="menu": await mostrar_menu(q,context); return
 
-    # --- BLOQUEO DE TIENDA CERRADA PARA LOS 4 BOTONES ---
     if tiendaCerrada and data in ["comprar_saldo", "vender_saldo", "comprar_crypto", "vender_crypto"]:
         await q.edit_message_text(MENSAJE_CERRADO, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Volver",callback_data="menu")]]))
         return
-    # --- FIN BLOQUEO ---
 
     pid=gen_id()
     context.user_data.clear()
@@ -224,10 +218,10 @@ async def button(update, context):
         await q.edit_message_text(f"💵📱 Vender saldo - #{pid}\n\nPagamos: 360 = {precios['saldo_venta']} CUP\n\nEscribe cuánto vendes:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Atrás",callback_data="menu")]]))
     elif data=="comprar_crypto":
         context.user_data["flow"]="compra_usdt_monto"
-        await q.edit_message_text(f"🚀🪙 Comprar USDT - #{pid}\n\nPrecio: {precios['usdt_compra']} CUP = 1 USDT\n\n¿Cuántos USDT?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Atrás",callback_data="menu")]]))
+        await q.edit_message_text(f"🚀🪙 Comprar USDT - #{pid}\n\n💰 Precio: {precios['usdt_compra']} CUP = 1 USDT\n🌐 Red: BEP20 (BNB Smart Chain)\n\n⚠️ SOLO trabajamos USDT por BEP20\n\n¿Cuántos USDT quieres?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Atrás",callback_data="menu")]]))
     elif data=="vender_crypto":
         context.user_data["flow"]="venta_usdt_monto"
-        await q.edit_message_text(f"💸🔗 Vender USDT - #{pid}\n\nPagamos: {precios['usdt_venta']} CUP = 1 USDT\n\n¿Cuántos vendes?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Atrás",callback_data="menu")]]))
+        await q.edit_message_text(f"💸🔗 Vender USDT - #{pid}\n\n💰 Pagamos: {precios['usdt_venta']} CUP = 1 USDT\n🌐 Red: BEP20 (BNB Smart Chain)\n\n⚠️ Envía SOLO por BEP20\n\n¿Cuántos USDT vendes?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Atrás",callback_data="menu")]]))
 async def recibir_mensaje(update, context):
     if not update.message: return
     usuario=update.effective_user.first_name or "Usuario"
@@ -295,14 +289,14 @@ async def recibir_mensaje(update, context):
             with lock_pendientes:
                 PENDIENTES[pid] = {"uid": uid, "tipo": "compra_usdt", "monto": cant, "total": total, "usuario": usuario, "username": username}
             await update.message.reply_text(f"⏳ #{pid}\nSolicitud de {cant} USDT = {total:.0f} CUP enviada a revisión.")
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"🔔 SOLICITUD PENDIENTE #{pid}\n{header('COMPRA USDT')}\nCantidad: {cant} USDT = {total:.0f} CUP\n\n¿Aprobar?", reply_markup=btn_aprobacion())
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"🔔 SOLICITUD PENDIENTE #{pid}\n{header('COMPRA USDT BEP20')}\nCantidad: {cant} USDT = {total:.0f} CUP\nRed: BEP20\n\n¿Aprobar?", reply_markup=btn_aprobacion())
         except: await update.message.reply_text("Solo número. Ej: 10")
     elif flow=="compra_usdt_wallet":
         context.user_data["wallet_cliente"]=txt; context.user_data["flow"]="compra_usdt_captura"
-        await update.message.reply_text(f"✅ Wallet guardada\n\nTransfiere {context.user_data['total_cup']:.0f} CUP a:\nTarjeta: {TARJETA}\nMovil: {MOVIL}\n\n{ADVERTENCIA}\n\nManda CAPTURA 📸")
+        await update.message.reply_text(f"✅ Wallet BEP20 guardada\n\nTransfiere {context.user_data['total_cup']:.0f} CUP a:\nTarjeta: {TARJETA}\nMovil: {MOVIL}\n\n{ADVERTENCIA}\n\nManda CAPTURA 📸")
         try:
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"{header('COMPRA USDT')}\nCantidad: {context.user_data['usdt']} USDT = {context.user_data['total_cup']:.0f} CUP")
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"👛 WALLET COPIABLE #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"{header('COMPRA USDT BEP20')}\nCantidad: {context.user_data['usdt']} USDT = {context.user_data['total_cup']:.0f} CUP")
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"👛 WALLET BEP20 COPIABLE #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
         except: pass
     elif flow=="compra_usdt_captura":
         if update.message.photo:
@@ -314,7 +308,7 @@ async def recibir_mensaje(update, context):
     elif flow=="compra_usdt_final":
         await update.message.reply_text(MENSAJE_FINAL)
         try:
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nUSDT: {context.user_data['usdt']}\nTotal: {context.user_data['total_cup']:.0f} CUP\nContacto: {txt}", reply_markup=btn_confirmar())
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nUSDT BEP20: {context.user_data['usdt']}\nTotal: {context.user_data['total_cup']:.0f} CUP\nContacto: {txt}", reply_markup=btn_confirmar())
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"👛 WALLET + CONTACTO COPIABLE #{pid}:\nWallet: <code>{context.user_data['wallet_cliente']}</code>\nNumero: <code>{txt}</code>", parse_mode="HTML")
         except: pass
         context.user_data.clear()
@@ -324,8 +318,8 @@ async def recibir_mensaje(update, context):
             total=cant*precios['usdt_venta']
             with lock_pendientes:
                 PENDIENTES[pid] = {"uid": uid, "tipo": "venta_usdt", "monto": cant, "total": total, "usuario": usuario, "username": username}
-            await update.message.reply_text(f"⏳ #{pid}\nSolicitud de vender {cant} USDT = {total:.0f} CUP enviada a revisión.")
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"🔔 SOLICITUD PENDIENTE #{pid}\n{header('VENTA USDT')}\nCantidad: {cant} USDT = {total:.0f} CUP\n\n¿Aprobar?", reply_markup=btn_aprobacion())
+            await update.message.reply_text(f"⏳ #{pid}\nSolicitud de vender {cant} USDT (BEP20) = {total:.0f} CUP enviada a revisión.")
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"🔔 SOLICITUD PENDIENTE #{pid}\n{header('VENTA USDT BEP20')}\nCantidad: {cant} USDT = {total:.0f} CUP\nRed: BEP20\n\n¿Aprobar?", reply_markup=btn_aprobacion())
         except: await update.message.reply_text("Solo número. Ej: 20")
     elif flow=="venta_usdt_captura":
         if update.message.photo:
@@ -337,7 +331,7 @@ async def recibir_mensaje(update, context):
     elif flow=="venta_usdt_datos":
         await update.message.reply_text(MENSAJE_FINAL)
         try:
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {context.user_data['usdt']} USDT\nRecibe: {context.user_data['total_cup']:.0f} CUP", reply_markup=btn_confirmar())
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {context.user_data['usdt']} USDT BEP20\nRecibe: {context.user_data['total_cup']:.0f} CUP", reply_markup=btn_confirmar())
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 DATOS COPIABLES #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
         except: pass
         context.user_data.clear()
@@ -355,7 +349,6 @@ def main():
     app.add_handler(CommandHandler("gaste1",cmd_gaste1))
     app.add_handler(CommandHandler("reset",cmd_reset))
     app.add_handler(CommandHandler("estado",cmd_estado))
-    # NUEVOS COMANDOS DE CIERRE
     app.add_handler(CommandHandler("cerrar",cmd_cerrar))
     app.add_handler(CommandHandler("abrir",cmd_abrir))
     app.add_handler(CallbackQueryHandler(button))
