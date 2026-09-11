@@ -28,6 +28,48 @@ def guardar_precios(d):
     with lock_precios:
         with open(PRECIOS_FILE, "w", encoding="utf-8") as f: json.dump(d, f)
 precios = cargar_precios()
+
+# --- INICIO NUEVO: SISTEMA DE TIENDA ABIERTA/CERRADA ---
+TIENDA_FILE = "tienda.json"
+lock_tienda = Lock()
+def cargar_tienda():
+    if os.path.exists(TIENDA_FILE):
+        try:
+            with open(TIENDA_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("cerrada", False)
+        except: pass
+    return False
+
+def guardar_tienda(cerrada):
+    with lock_tienda:
+        with open(TIENDA_FILE, "w", encoding="utf-8") as f:
+            json.dump({"cerrada": cerrada}, f)
+
+tiendaCerrada = cargar_tienda()
+
+MENSAJE_CERRADO = """🌙 ¡CubanStore está CERRADO ahora mismo! 🔒
+
+🕒 Horario de trabajo:
+De 8:00 AM a 10:30 PM
+Hora de Cuba 🇨🇺"""
+
+async def cmd_cerrar(u,c):
+    global tiendaCerrada
+    if u.effective_user.id!= ADMIN_USER_ID: return
+    tiendaCerrada = True
+    guardar_tienda(True)
+    await u.message.reply_text("🔒 CubanStore CERRADA correctamente\n\nAhora cuando toquen cualquier botón les saldrá el cartel de cerrado.")
+
+async def cmd_abrir(u,c):
+    global tiendaCerrada
+    if u.effective_user.id!= ADMIN_USER_ID: return
+    tiendaCerrada = False
+    guardar_tienda(False)
+    await u.message.reply_text("🔓 CubanStore ABIERTA correctamente")
+
+# --- FIN NUEVO ---
+
 def gen_id(): return f"{random.randint(1000, 9999)}"
 TRANSFER_FILE = "transferencias.json"
 LIMITE_DIARIO = 3
@@ -83,8 +125,15 @@ async def cmd_reset(u,c):
 async def cmd_estado(u,c):
     if u.effective_user.id!= ADMIN_USER_ID: return
     data = cargar_transfer()
-    await u.message.reply_text(f"📊 ESTADO HOY {data['fecha']}:\nUsadas: {data['usadas']}/{LIMITE_DIARIO}\nQuedan: {LIMITE_DIARIO - data['usadas']}")
+    await u.message.reply_text(f"📊 ESTADO HOY {data['fecha']}:\nUsadas: {data['usadas']}/{LIMITE_DIARIO}\nQuedan: {LIMITE_DIARIO - data['usadas']}\n\n🏪 Tienda: {'🔒 CERRADA' if tiendaCerrada else '🔓 ABIERTA'}")
 async def mostrar_menu(u,c):
+    # BLOQUEO TAMBIEN EN /tienda
+    if tiendaCerrada:
+        if isinstance(u,Update):
+            await u.message.reply_text(MENSAJE_CERRADO)
+        else:
+            await u.edit_message_text(MENSAJE_CERRADO)
+        return
     kb=[[InlineKeyboardButton("📲💳 Comprar saldo",callback_data="comprar_saldo")],[InlineKeyboardButton("💵📱 Vender saldo",callback_data="vender_saldo")],[InlineKeyboardButton("🚀🪙 Comprar USDT",callback_data="comprar_crypto")],[InlineKeyboardButton("💸🔗 Vender USDT",callback_data="vender_crypto")]]
     if isinstance(u,Update): await u.message.reply_text("🛍️ Elige:",reply_markup=InlineKeyboardMarkup(kb))
     else: await u.edit_message_text("🛍️ Elige:",reply_markup=InlineKeyboardMarkup(kb))
@@ -153,6 +202,13 @@ async def button(update, context):
         except Exception as e: print(f"Error rechazar: {e}")
         return
     if data=="menu": await mostrar_menu(q,context); return
+
+    # --- BLOQUEO DE TIENDA CERRADA PARA LOS 4 BOTONES ---
+    if tiendaCerrada and data in ["comprar_saldo", "vender_saldo", "comprar_crypto", "vender_crypto"]:
+        await q.edit_message_text(MENSAJE_CERRADO, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Volver",callback_data="menu")]]))
+        return
+    # --- FIN BLOQUEO ---
+
     pid=gen_id()
     context.user_data.clear()
     context.user_data["pedido_id"]=pid
@@ -299,6 +355,9 @@ def main():
     app.add_handler(CommandHandler("gaste1",cmd_gaste1))
     app.add_handler(CommandHandler("reset",cmd_reset))
     app.add_handler(CommandHandler("estado",cmd_estado))
+    # NUEVOS COMANDOS DE CIERRE
+    app.add_handler(CommandHandler("cerrar",cmd_cerrar))
+    app.add_handler(CommandHandler("abrir",cmd_abrir))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, recibir_mensaje))
     print("🤖 Bot FINAL FIX FOTO OK"); app.run_polling()
