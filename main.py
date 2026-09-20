@@ -5,6 +5,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 TOKEN = os.environ.get("TOKEN")
 ADMIN_CHANNEL_ID = -1003602948532
+CANAL_PAGOS_ID = -1004381290292
 ADMIN_USER_ID = 7450751212
 TARJETA = "9238-1299-7507-3018"
 MOVIL = "55348244"
@@ -28,7 +29,6 @@ def guardar_precios(d):
     with lock_precios:
         with open(PRECIOS_FILE, "w", encoding="utf-8") as f: json.dump(d, f)
 precios = cargar_precios()
-
 TIENDA_FILE = "tienda.json"
 lock_tienda = Lock()
 def cargar_tienda():
@@ -39,34 +39,28 @@ def cargar_tienda():
                 return data.get("cerrada", False)
         except: pass
     return False
-
 def guardar_tienda(cerrada):
     with lock_tienda:
         with open(TIENDA_FILE, "w", encoding="utf-8") as f:
             json.dump({"cerrada": cerrada}, f)
-
 tiendaCerrada = cargar_tienda()
-
 MENSAJE_CERRADO = """🌙 ¡CubanStore está CERRADO ahora mismo! 🔒
 
 🕒 Horario de trabajo:
 De 8:00 AM a 10:30 PM
 Hora de Cuba 🇨🇺"""
-
 async def cmd_cerrar(u,c):
     global tiendaCerrada
     if u.effective_user.id!= ADMIN_USER_ID: return
     tiendaCerrada = True
     guardar_tienda(True)
-    await u.message.reply_text("🔒 CubanStore CERRADA correctamente\n\nAhora cuando toquen cualquier botón les saldrá el cartel de cerrado.")
-
+    await u.message.reply_text("🔒 CubanStore CERRADA correctamente")
 async def cmd_abrir(u,c):
     global tiendaCerrada
     if u.effective_user.id!= ADMIN_USER_ID: return
     tiendaCerrada = False
     guardar_tienda(False)
     await u.message.reply_text("🔓 CubanStore ABIERTA correctamente")
-
 def gen_id(): return f"{random.randint(1000, 9999)}"
 TRANSFER_FILE = "transferencias.json"
 LIMITE_DIARIO = 3
@@ -87,6 +81,7 @@ def guardar_transfer(data):
         with open(TRANSFER_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f)
 PENDIENTES = {}
+PAGOS_INFO = {}
 lock_pendientes = Lock()
 async def cambiar_saldo(u,c):
     if u.effective_user.id!= ADMIN_USER_ID: return
@@ -144,6 +139,16 @@ async def button(update, context):
             _, uid_str, pid = data.split("_",2)
             await context.bot.send_message(chat_id=int(uid_str), text=f"✅ Pedido #{pid} - ¡Pago realizado! ✅\n\nGracias por preferirnos 🙏\nUsa /tienda para nuevo pedido")
             await q.edit_message_text(f"{q.message.text}\n\n✅ CONFIRMADO Y PAGADO - #{pid}")
+            try:
+                info = PAGOS_INFO.get(pid, {})
+                operacion = info.get("operacion", "intercambio")
+                monto = info.get("monto", "0.00 CUP")
+                usuario_txt = info.get("usuario", "Usuario")
+                texto_canal = f"📢 Solicitud completada\n\nNo. pedido: {pid}\nOperación: {operacion}\nMonto pagado: {monto}\nUsuario: {usuario_txt}\n\n--- ✅ Pagado ---"
+                await context.bot.send_message(chat_id=CANAL_PAGOS_ID, text=texto_canal)
+                PAGOS_INFO.pop(pid, None)
+            except Exception as e2:
+                print(f"Error canal pagos: {e2}")
         except Exception as e: print(e)
         return
     if data.startswith("aprobar_"):
@@ -198,11 +203,9 @@ async def button(update, context):
         except Exception as e: print(f"Error rechazar: {e}")
         return
     if data=="menu": await mostrar_menu(q,context); return
-
     if tiendaCerrada and data in ["comprar_saldo", "vender_saldo", "comprar_crypto", "vender_crypto"]:
         await q.edit_message_text(MENSAJE_CERRADO, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Volver",callback_data="menu")]]))
         return
-
     pid=gen_id()
     context.user_data.clear()
     context.user_data["pedido_id"]=pid
@@ -255,7 +258,10 @@ async def recibir_mensaje(update, context):
     elif flow=="compra_saldo_telefono":
         await update.message.reply_text(MENSAJE_FINAL)
         try:
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nSaldo: {context.user_data.get('monto',0):.0f} = {context.user_data.get('total_cup',0):.0f} CUP", reply_markup=btn_confirmar())
+            monto = context.user_data.get('monto',0)
+            total = context.user_data.get('total_cup',0)
+            PAGOS_INFO[pid] = {"operacion": "compra de saldo", "monto": f"{total:.2f} CUP", "usuario": f"{usuario} {username}"}
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nSaldo: {monto:.0f} = {total:.0f} CUP", reply_markup=btn_confirmar())
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"📱 NUMERO COPIABLE #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
         except: pass
         context.user_data.clear()
@@ -278,7 +284,10 @@ async def recibir_mensaje(update, context):
     elif flow=="venta_saldo_datos":
         await update.message.reply_text(MENSAJE_FINAL)
         try:
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {context.user_data.get('monto',0):.0f}\nA pagar: {context.user_data.get('total_cup',0):.0f} CUP", reply_markup=btn_confirmar())
+            monto = context.user_data.get('monto',0)
+            total = context.user_data.get('total_cup',0)
+            PAGOS_INFO[pid] = {"operacion": "venta de saldo", "monto": f"{total:.2f} CUP", "usuario": f"{usuario} {username}"}
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {monto:.0f}\nA pagar: {total:.0f} CUP", reply_markup=btn_confirmar())
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 TARJETA Y NUMERO COPIABLE #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
         except: pass
         context.user_data.clear()
@@ -308,7 +317,10 @@ async def recibir_mensaje(update, context):
     elif flow=="compra_usdt_final":
         await update.message.reply_text(MENSAJE_FINAL)
         try:
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nUSDT BEP20: {context.user_data['usdt']}\nTotal: {context.user_data['total_cup']:.0f} CUP\nContacto: {txt}", reply_markup=btn_confirmar())
+            total = context.user_data.get('total_cup',0)
+            usdt = context.user_data.get('usdt',0)
+            PAGOS_INFO[pid] = {"operacion": "compra de USDT", "monto": f"{total:.2f} CUP", "usuario": f"{usuario} {username}"}
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nUSDT BEP20: {usdt}\nTotal: {total:.0f} CUP\nContacto: {txt}", reply_markup=btn_confirmar())
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"👛 WALLET + CONTACTO COPIABLE #{pid}:\nWallet: <code>{context.user_data['wallet_cliente']}</code>\nNumero: <code>{txt}</code>", parse_mode="HTML")
         except: pass
         context.user_data.clear()
@@ -331,7 +343,10 @@ async def recibir_mensaje(update, context):
     elif flow=="venta_usdt_datos":
         await update.message.reply_text(MENSAJE_FINAL)
         try:
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {context.user_data['usdt']} USDT BEP20\nRecibe: {context.user_data['total_cup']:.0f} CUP", reply_markup=btn_confirmar())
+            total = context.user_data.get('total_cup',0)
+            usdt = context.user_data.get('usdt',0)
+            PAGOS_INFO[pid] = {"operacion": "venta de USDT", "monto": f"{total:.2f} CUP", "usuario": f"{usuario} {username}"}
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {usdt} USDT BEP20\nRecibe: {total:.0f} CUP", reply_markup=btn_confirmar())
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 DATOS COPIABLES #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
         except: pass
         context.user_data.clear()
@@ -353,5 +368,5 @@ def main():
     app.add_handler(CommandHandler("abrir",cmd_abrir))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, recibir_mensaje))
-    print("🤖 Bot FINAL FIX FOTO OK"); app.run_polling()
+    print("🤖 Bot FINAL"); app.run_polling()
 if __name__=="__main__": main()
