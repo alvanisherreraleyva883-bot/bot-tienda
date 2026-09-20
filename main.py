@@ -144,7 +144,7 @@ async def button(update, context):
                 operacion = info.get("operacion", "intercambio")
                 monto = info.get("monto", "0.00 CUP")
                 usuario_txt = info.get("usuario", "Usuario")
-                texto_canal = f"📢 Solicitud completada\n\nNo. pedido: {pid}\nOperación: {operacion}\nMonto pagado: {monto}\nUsuario: {usuario_txt}\n\n--- ✅ Pagado ---"
+                texto_canal = f"📢 Solicitud completada\n\n🧾 No. pedido: {pid}\n💱 Operación: {operacion}\n💰 Monto pagado: {monto}\n👤 Usuario: {usuario_txt}\n\n--- ✅ Pagado ---"
                 await context.bot.send_message(chat_id=CANAL_PAGOS_ID, text=texto_canal)
                 PAGOS_INFO.pop(pid, None)
             except Exception as e2:
@@ -167,13 +167,13 @@ async def button(update, context):
                 user_data["monto"] = info["monto"]
                 user_data["total_cup"] = info["total"]
                 user_data["pedido_id"] = pid
-                await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\nQuieres {info['monto']:.0f} saldo = {info['total']:.0f} CUP\n\nTransfiere {info['total']:.0f} CUP a:\nTarjeta: {TARJETA}\nMovil: {MOVIL}\n\n{ADVERTENCIA}\n\nAhora manda la CAPTURA 📸")
+                await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\nQuieres {info['monto']:.0f} saldo = {info['total']:.0f} CUP\n\n💳 Transfiere {info['total']:.0f} CUP a:\nTarjeta: <code>{TARJETA}</code>\nMóvil: <code>{MOVIL}</code>\n\nToca el número para copiar 👆\n\n{ADVERTENCIA}\n\nAhora manda la CAPTURA 📸", parse_mode="HTML")
             elif tipo == "venta_saldo":
                 user_data["flow"] = "venta_saldo_captura"
                 user_data["monto"] = info["monto"]
                 user_data["total_cup"] = info["total"]
                 user_data["pedido_id"] = pid
-                await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\nVendes {info['monto']:.0f} saldo\nRecibes: {info['total']:.0f} CUP\n\nTransfiere saldo a {MOVIL}\n\n{ADVERTENCIA}\n\nManda CAPTURA 📸")
+                await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\nVendes {info['monto']:.0f} saldo\nRecibes: {info['total']:.0f} CUP\n\nTransfiere saldo a <code>{MOVIL}</code> 👆 toca para copiar\n\n{ADVERTENCIA}\n\nManda CAPTURA 📸", parse_mode="HTML")
             elif tipo == "compra_usdt":
                 user_data["flow"] = "compra_usdt_wallet"
                 user_data["usdt"] = info["monto"]
@@ -302,7 +302,7 @@ async def recibir_mensaje(update, context):
         except: await update.message.reply_text("Solo número. Ej: 10")
     elif flow=="compra_usdt_wallet":
         context.user_data["wallet_cliente"]=txt; context.user_data["flow"]="compra_usdt_captura"
-        await update.message.reply_text(f"✅ Wallet BEP20 guardada\n\nTransfiere {context.user_data['total_cup']:.0f} CUP a:\nTarjeta: {TARJETA}\nMovil: {MOVIL}\n\n{ADVERTENCIA}\n\nManda CAPTURA 📸")
+        await update.message.reply_text(f"✅ Wallet BEP20 guardada\n\n💳 Transfiere {context.user_data['total_cup']:.0f} CUP a:\nTarjeta: <code>{TARJETA}</code>\nMóvil: <code>{MOVIL}</code>\n\nToca para copiar 👆\n\n{ADVERTENCIA}\n\nManda CAPTURA 📸", parse_mode="HTML")
         try:
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"{header('COMPRA USDT BEP20')}\nCantidad: {context.user_data['usdt']} USDT = {context.user_data['total_cup']:.0f} CUP")
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"👛 WALLET BEP20 COPIABLE #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
