@@ -315,8 +315,9 @@ async def recibir_mensaje(update, context):
         await update.message.reply_text(MENSAJE_FINAL)
         try:
             monto = context.user_data.get('monto',0)
+            # ARREGLO: ahora muestra lo que TU pagaste (saldo) no CUP
+            PAGOS_INFO[pid] = {"operacion": "compra de saldo", "monto": f"{monto:.0f} de saldo", "usuario": f"{usuario} {username}"}
             total = context.user_data.get('total_cup',0)
-            PAGOS_INFO[pid] = {"operacion": "compra de saldo", "monto": f"{total:.2f} CUP", "usuario": f"{usuario} {username}"}
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nSaldo: {monto:.0f} = {total:.0f} CUP", reply_markup=btn_confirmar())
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"📱 NUMERO COPIABLE #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
         except: pass
@@ -376,9 +377,10 @@ async def recibir_mensaje(update, context):
     elif flow=="compra_usdt_final":
         await update.message.reply_text(MENSAJE_FINAL)
         try:
-            total = context.user_data.get('total_cup',0)
             usdt = context.user_data.get('usdt',0)
-            PAGOS_INFO[pid] = {"operacion": "compra de USDT", "monto": f"{total:.2f} CUP", "usuario": f"{usuario} {username}"}
+            # ARREGLO: ahora muestra lo que TU pagaste (USDT) no CUP
+            PAGOS_INFO[pid] = {"operacion": "compra de USDT", "monto": f"{usdt} USDT", "usuario": f"{usuario} {username}"}
+            total = context.user_data.get('total_cup',0)
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nUSDT BEP20: {usdt}\nTotal: {total:.0f} CUP\nContacto: {txt}", reply_markup=btn_confirmar())
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"👛 WALLET + CONTACTO COPIABLE #{pid}:\nWallet: <code>{context.user_data['wallet_cliente']}</code>\nNumero: <code>{txt}</code>", parse_mode="HTML")
         except: pass
@@ -428,5 +430,5 @@ def main():
     app.add_handler(CommandHandler("stock",cmd_stock))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, recibir_mensaje))
-    print("🤖 Bot FINAL con STOCK + Estado Pagado"); app.run_polling()
+    print("🤖 Bot FINAL con STOCK + Estado Pagado + Monto Real Pagado"); app.run_polling()
 if __name__=="__main__": main()
