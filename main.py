@@ -186,7 +186,6 @@ async def button(update, context):
                 user_data["total_cup"] = info["total"]
                 user_data["pedido_id"] = pid
                 await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\nVenderás {info['monto']} USDT\nRecibirás: {info['total']:.0f} CUP\n\n🌐 Red: BEP20 (BSC) - OBLIGATORIO\nEnvía los {info['monto']} USDT a:\n<code>{WALLET_BEP20}</code>\n\n⚠️ Solo BEP20, si envías por otra red se pierde el dinero\n\n{ADVERTENCIA}\n\nLuego manda CAPTURA 📸", parse_mode="HTML")
-            context.application.user_data[uid] = user_data
             await q.edit_message_text(f"{q.message.text}\n\n✅ APROBADO POR TI - #{pid}")
         except Exception as e: print(f"Error aprobar: {e}")
         return
