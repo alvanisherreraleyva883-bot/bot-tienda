@@ -24,7 +24,7 @@ def cargar_precios():
         try:
             with open(PRECIOS_FILE, "r", encoding="utf-8") as f: return json.load(f)
         except: pass
-    return {"saldo_compra": 900, "saldo_venta": 750, "usdt_compra": 360, "usdt_venta": 350}
+    return {"saldo_compra": 0, "saldo_venta": 0, "usdt_compra": 0, "usdt_venta": 0}
 def guardar_precios(d):
     with lock_precios:
         with open(PRECIOS_FILE, "w", encoding="utf-8") as f: json.dump(d, f)
@@ -264,7 +264,7 @@ async def button(update, context):
             await q.edit_message_text(f"💰 Saldo disponible: 0 CUP ❌ AGOTADO\n\nPor ahora no tenemos saldo, vuelve más tarde 🙏", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Volver",callback_data="menu")]]))
             return
         context.user_data["flow"]="compra_saldo"
-        await q.edit_message_text(f"📲💳 Comprar saldo - #{pid}\n\n💰 Disponible: {disponible:.0f} CUP\n💵 360 = {precios['saldo_compra']} CUP\n\nEscribe cuánto quieres:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Atrás",callback_data="menu")]]))
+        await q.edit_message_text(f"📲💳 Comprar saldo - #{pid}\n\n💰 Saldo disponible en la tienda: {disponible:.0f} CUP\n💵 Precio: 360 = {precios['saldo_compra']} CUP\n\n✍️ Escribe cuánto quieres comprar:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Atrás",callback_data="menu")]]))
     elif data=="vender_saldo":
         context.user_data["flow"]="venta_saldo"
         await q.edit_message_text(f"💵📱 Vender saldo - #{pid}\n\nPagamos: 360 = {precios['saldo_venta']} CUP\n\nEscribe cuánto vendes:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Atrás",callback_data="menu")]]))
@@ -274,7 +274,7 @@ async def button(update, context):
             await q.edit_message_text(f"💵 USDT disponible: 0 USDT ❌ AGOTADO\n\nPor ahora no tenemos USDT, vuelve más tarde 🙏", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Volver",callback_data="menu")]]))
             return
         context.user_data["flow"]="compra_usdt_monto"
-        await q.edit_message_text(f"🚀🪙 Comprar USDT - #{pid}\n\n💵 Disponible: {disponible:.0f} USDT\n💰 Precio: {precios['usdt_compra']} CUP = 1 USDT\n🌐 Red: BEP20 (BSC)\n\n⚠️ SOLO trabajamos USDT por BEP20\n\n¿Cuántos USDT quieres?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Atrás",callback_data="menu")]]))
+        await q.edit_message_text(f"🚀🪙 Comprar USDT - #{pid}\n\n💵 USDT disponibles en la tienda: {disponible:.0f} USDT\n💰 Precio: {precios['usdt_compra']} CUP = 1 USDT\n🌐 Red: BEP20 (BSC)\n\n⚠️ SOLO trabajamos USDT por BEP20\n\n¿Cuántos USDT quieres?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Atrás",callback_data="menu")]]))
     elif data=="vender_crypto":
         context.user_data["flow"]="venta_usdt_monto"
         await q.edit_message_text(f"💸🔗 Vender USDT - #{pid}\n\n💰 Pagamos: {precios['usdt_venta']} CUP = 1 USDT\n🌐 Red: BEP20 (BNB Smart Chain)\n\n⚠️ Envía SOLO por BEP20\n\n¿Cuántos USDT vendes?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Atrás",callback_data="menu")]]))
