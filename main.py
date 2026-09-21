@@ -315,10 +315,17 @@ async def recibir_mensaje(update, context):
         await update.message.reply_text(MENSAJE_FINAL)
         try:
             monto = context.user_data.get('monto',0)
-            # ARREGLO: ahora muestra lo que TU pagaste (saldo) no CUP
-            PAGOS_INFO[pid] = {"operacion": "compra de saldo", "monto": f"{monto:.0f} de saldo", "usuario": f"{usuario} {username}"}
             total = context.user_data.get('total_cup',0)
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nSaldo: {monto:.0f} = {total:.0f} CUP", reply_markup=btn_confirmar())
+            PAGOS_INFO[pid] = {"operacion": "compra de saldo", "monto": f"{monto:.0f} de saldo", "usuario": f"{usuario} {username}"}
+            # --- STOCK AUTOMATICO Y LIMITE ---
+            stock["saldo"] = max(0, stock["saldo"] - monto)
+            guardar_stock(stock)
+            tdata = cargar_transfer()
+            tdata["usadas"] = min(tdata["usadas"] + 1, LIMITE_DIARIO)
+            tdata["fecha"] = str(datetime.date.today())
+            guardar_transfer(tdata)
+            # --- FIN ---
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nSaldo: {monto:.0f} = {total:.0f} CUP\n📦 Stock restante: {stock['saldo']:.0f}", reply_markup=btn_confirmar())
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"📱 NUMERO COPIABLE #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
         except: pass
         context.user_data.clear()
@@ -344,7 +351,9 @@ async def recibir_mensaje(update, context):
             monto = context.user_data.get('monto',0)
             total = context.user_data.get('total_cup',0)
             PAGOS_INFO[pid] = {"operacion": "venta de saldo", "monto": f"{total:.2f} CUP", "usuario": f"{usuario} {username}"}
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {monto:.0f}\nA pagar: {total:.0f} CUP", reply_markup=btn_confirmar())
+            stock["saldo"] = stock["saldo"] + monto
+            guardar_stock(stock)
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {monto:.0f}\nA pagar: {total:.0f} CUP\n📦 Stock nuevo: {stock['saldo']:.0f}", reply_markup=btn_confirmar())
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 TARJETA Y NUMERO COPIABLE #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
         except: pass
         context.user_data.clear()
@@ -378,10 +387,11 @@ async def recibir_mensaje(update, context):
         await update.message.reply_text(MENSAJE_FINAL)
         try:
             usdt = context.user_data.get('usdt',0)
-            # ARREGLO: ahora muestra lo que TU pagaste (USDT) no CUP
-            PAGOS_INFO[pid] = {"operacion": "compra de USDT", "monto": f"{usdt} USDT", "usuario": f"{usuario} {username}"}
             total = context.user_data.get('total_cup',0)
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nUSDT BEP20: {usdt}\nTotal: {total:.0f} CUP\nContacto: {txt}", reply_markup=btn_confirmar())
+            PAGOS_INFO[pid] = {"operacion": "compra de USDT", "monto": f"{usdt} USDT", "usuario": f"{usuario} {username}"}
+            stock["usdt"] = max(0, stock["usdt"] - usdt)
+            guardar_stock(stock)
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nUSDT BEP20: {usdt}\nTotal: {total:.0f} CUP\n📦 Stock USDT restante: {stock['usdt']:.0f}\nContacto: {txt}", reply_markup=btn_confirmar())
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"👛 WALLET + CONTACTO COPIABLE #{pid}:\nWallet: <code>{context.user_data['wallet_cliente']}</code>\nNumero: <code>{txt}</code>", parse_mode="HTML")
         except: pass
         context.user_data.clear()
@@ -407,7 +417,9 @@ async def recibir_mensaje(update, context):
             total = context.user_data.get('total_cup',0)
             usdt = context.user_data.get('usdt',0)
             PAGOS_INFO[pid] = {"operacion": "venta de USDT", "monto": f"{total:.2f} CUP", "usuario": f"{usuario} {username}"}
-            await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {usdt} USDT BEP20\nRecibe: {total:.0f} CUP", reply_markup=btn_confirmar())
+            stock["usdt"] = stock["usdt"] + usdt
+            guardar_stock(stock)
+            await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {usdt} USDT BEP20\nRecibe: {total:.0f} CUP\n📦 Stock USDT nuevo: {stock['usdt']:.0f}", reply_markup=btn_confirmar())
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 DATOS COPIABLES #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
         except: pass
         context.user_data.clear()
@@ -430,5 +442,5 @@ def main():
     app.add_handler(CommandHandler("stock",cmd_stock))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, recibir_mensaje))
-    print("🤖 Bot FINAL con STOCK + Estado Pagado + Monto Real Pagado"); app.run_polling()
+    print("🤖 Bot FINAL con STOCK AUTOMATICO + Monto Real Pagado"); app.run_polling()
 if __name__=="__main__": main()
