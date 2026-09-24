@@ -97,7 +97,77 @@ def guardar_transfer(data):
             json.dump(data, f)
 PENDIENTES = {}
 PAGOS_INFO = {}
+ORDENES_ACTIVAS = {}
 lock_pendientes = Lock()
+
+# --- NUEVA FUNCION AUTO-CANCELADO 20 MIN ---
+async def cancelar_automatico(context):
+    data = context.job.data
+    pid = data["pid"]
+    uid = data["uid"]
+    tipo = data.get("tipo", "compra_saldo")
+    monto = data.get("monto", 0)
+    total = data.get("total", 0)
+    usuario = data.get("usuario", "Usuario")
+    username = data.get("username", "")
+
+    if pid not in ORDENES_ACTIVAS:
+        return
+
+    ORDENES_ACTIVAS.pop(pid, None)
+    with lock_pendientes:
+        PENDIENTES.pop(pid, None)
+    if uid in context.application.user_data:
+        try:
+            context.application.user_data[uid].clear()
+        except:
+            pass
+
+    if "compra" in tipo:
+        titulo_user = "❌ COMPRA CANCELADA"
+        motivo_user = "Tiempo de compra expirado\n(20 min sin completar el pago)"
+        extra_user = "Puede volver a realizar una nueva\ncompra cuando quiera."
+        tipo_admin = "Compra de saldo" if "saldo" in tipo else "Compra de USDT"
+    else:
+        titulo_user = "❌ VENTA CANCELADA"
+        motivo_user = "Tiempo de venta expirado\n(20 min sin entregar)"
+        extra_user = "Puede volver a realizar una nueva\nventa cuando quiera."
+        tipo_admin = "Venta de saldo" if "saldo" in tipo else "Venta de USDT"
+
+    texto_usuario = f"""{titulo_user}
+
+┌─────────────────────────┐
+│ Orden #{pid}
+│ Estado: CANCELADA ❌
+│
+│ Motivo: {motivo_user}
+│
+│ {extra_user}
+└─────────────────────────┘
+
+Usa /tienda para una nueva orden.
+Cuban.Store 💙"""
+
+    texto_admin = f"""⚠️ {titulo_user} AUTOMÁTICAMENTE
+
+📋 Orden #{pid}
+👤 Usuario: {usuario} {username}
+🆔 ID: {uid}
+
+📦 Detalles:
+Tipo: {tipo_admin}
+Cantidad: {monto}
+Total: {total:.0f} CUP
+
+⏰ Motivo: 20 min sin completar
+📅 {datetime.datetime.now().strftime('%d/%m/%Y - %I:%M %p')}"""
+
+    try:
+        await context.bot.send_message(uid, texto_usuario)
+        await context.bot.send_message(ADMIN_CHANNEL_ID, texto_admin)
+    except Exception as e:
+        print(f"Error auto-cancel: {e}")
+
 async def cmd_stock(u,c):
     if u.effective_user.id!= ADMIN_USER_ID:
         await u.message.reply_text("❌ No tienes permiso, solo el admin puede cambiar el stock.")
@@ -232,7 +302,15 @@ async def button(update, context):
                 user_data["total_cup"] = info["total"]
                 user_data["pedido_id"] = pid
                 await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\nVenderás {info['monto']} USDT\nRecibirás: {info['total']:.0f} CUP\n\n🌐 Red: BEP20 (BSC) - OBLIGATORIO\nEnvía los {info['monto']} USDT a:\n<code>{WALLET_BEP20}</code>\n\n⚠️ Solo BEP20, si envías por otra red se pierde el dinero\n\n{ADVERTENCIA}\n\nLuego manda CAPTURA 📸", parse_mode="HTML")
-            await q.edit_message_text(f"{q.message.text}\n\n✅ APROBADO POR TI - #{pid}")
+
+            # --- TIMER 20 MIN AUTO CANCELADO ---
+            ORDENES_ACTIVAS[pid] = {"uid": uid, "tipo": tipo}
+            try:
+                context.job_queue.run_once(cancelar_automatico, 1200, data={"pid": pid, "uid": uid, "tipo": tipo, "monto": info["monto"], "total": info["total"], "usuario": info.get("usuario","Usuario"), "username": info.get("username","")}, name=f"cancel_{pid}")
+            except Exception as e:
+                print(f"Error job_queue: {e}")
+
+            await q.edit_message_text(f"{q.message.text}\n\n✅ APROBADO POR TI - #{pid} (Expira en 20 min)")
         except Exception as e: print(f"Error aprobar: {e}")
         return
     if data.startswith("rechazar_"):
@@ -241,6 +319,7 @@ async def button(update, context):
             uid = int(uid_str)
             with lock_pendientes:
                 PENDIENTES.pop(pid, None)
+            ORDENES_ACTIVAS.pop(pid, None)
             if uid in context.application.user_data:
                 context.application.user_data[uid].clear()
             await context.bot.send_message(uid, f"❌ Pedido #{pid} rechazado.\n\nNo se pudo realizar la operación en este momento, intenta más tarde.\nUsa /tienda")
@@ -288,6 +367,17 @@ async def recibir_mensaje(update, context):
     txt=update.message.text or ""
     if txt.startswith("/"): return
     if not flow: return await update.message.reply_text("Usa /tienda")
+
+    # Si manda foto, cancelar timer de 20 min
+    if update.message.photo:
+        ORDENES_ACTIVAS.pop(pid, None)
+        try:
+            jobs = context.job_queue.get_jobs_by_name(f"cancel_{pid}")
+            for j in jobs:
+                j.schedule_removal()
+        except:
+            pass
+
     def header(t): return f"🆕 #{pid} - {t}\n👤 {usuario} {username}\n🆔 {uid}"
     def btn_confirmar(): return InlineKeyboardMarkup([[InlineKeyboardButton(f"✅ Confirmar Pago #{pid}", callback_data=f"confirmar_{uid}_{pid}")]])
     def btn_aprobacion():
@@ -317,14 +407,12 @@ async def recibir_mensaje(update, context):
             monto = context.user_data.get('monto',0)
             total = context.user_data.get('total_cup',0)
             PAGOS_INFO[pid] = {"operacion": "compra de saldo", "monto": f"{monto:.0f} de saldo", "usuario": f"{usuario} {username}"}
-            # --- STOCK AUTOMATICO Y LIMITE ---
             stock["saldo"] = max(0, stock["saldo"] - monto)
             guardar_stock(stock)
             tdata = cargar_transfer()
             tdata["usadas"] = min(tdata["usadas"] + 1, LIMITE_DIARIO)
             tdata["fecha"] = str(datetime.date.today())
             guardar_transfer(tdata)
-            # --- FIN ---
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"📲 RESUMEN FINAL #{pid}\n{usuario}\nSaldo: {monto:.0f} = {total:.0f} CUP\n📦 Stock restante: {stock['saldo']:.0f}", reply_markup=btn_confirmar())
             await context.bot.send_message(ADMIN_CHANNEL_ID, f"📱 NUMERO COPIABLE #{pid}:\n<code>{txt}</code>", parse_mode="HTML")
         except: pass
@@ -442,5 +530,5 @@ def main():
     app.add_handler(CommandHandler("stock",cmd_stock))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, recibir_mensaje))
-    print("🤖 Bot FINAL con STOCK AUTOMATICO + Monto Real Pagado"); app.run_polling()
+    print("🤖 Bot FINAL con STOCK AUTOMATICO + TIMER 20 MIN"); app.run_polling()
 if __name__=="__main__": main()
