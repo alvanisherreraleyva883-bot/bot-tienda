@@ -432,7 +432,6 @@ async def recibir_mensaje(update, context):
             await update.message.reply_text(f"📸 Captura recibida ✅\n\nAhora envía tu TARJETA CUP (16 dígitos) donde te vamos a pagar los {total_msg:.0f} CUP")
         else: await update.message.reply_text(f"Manda foto con claridad 📸\n\n{ADVERTENCIA}")
     elif flow=="venta_saldo_datos":
-        # FIX 2 PASOS - SALDO
         if "tarjeta_venta" not in context.user_data:
             digitos = ''.join(filter(str.isdigit, txt))
             if len(digitos) < 16:
@@ -460,7 +459,7 @@ async def recibir_mensaje(update, context):
                 return
             else:
                 context.user_data["tarjeta_venta"] = tarjeta
-                await update.message.reply_text(f"✅ Tarjeta recibida: {tarjeta}\n\nAhora envíame el NÚMERO A CONFIRMAR en otro mensaje aparte.")
+                await update.message.reply_text(f"✅ Tarjeta recibida: {tarjeta}\n\nAhora envíame el NÚMERO A CONFIRMAR")
                 return
         else:
             tarjeta_guardada = context.user_data.get("tarjeta_venta", "")
@@ -536,7 +535,6 @@ async def recibir_mensaje(update, context):
             await update.message.reply_text(f"📸 Captura recibida ✅\n\nAhora envía tu TARJETA CUP (16 dígitos) donde te vamos a pagar los {total_msg:.0f} CUP por tus USDT")
         else: await update.message.reply_text(f"Manda captura con claridad 📸\n\n{ADVERTENCIA}")
     elif flow=="venta_usdt_datos":
-        # FIX 2 PASOS - USDT
         if "tarjeta_venta" not in context.user_data:
             digitos = ''.join(filter(str.isdigit, txt))
             if len(digitos) < 16:
@@ -564,7 +562,7 @@ async def recibir_mensaje(update, context):
                 return
             else:
                 context.user_data["tarjeta_venta"] = tarjeta
-                await update.message.reply_text(f"✅ Tarjeta recibida: {tarjeta}\n\nAhora envíame el NÚMERO A CONFIRMAR en otro mensaje aparte.")
+                await update.message.reply_text(f"✅ Tarjeta recibida: {tarjeta}\n\nAhora envíame el NÚMERO A CONFIRMAR")
                 return
         else:
             tarjeta_guardada = context.user_data.get("tarjeta_venta", "")
@@ -589,6 +587,7 @@ def main():
     Thread(target=run_flask,daemon=True).start()
     app=Application.builder().token(TOKEN).read_timeout(60).write_timeout(60).connect_timeout(60).build()
     app.add_handler(CommandHandler("tienda",tienda))
+    app.add_handler(CommandHandler("start",tienda))
     app.add_handler(CommandHandler("soporte",soporte))
     app.add_handler(CommandHandler("saldo",cambiar_saldo))
     app.add_handler(CommandHandler("venta",cambiar_venta))
