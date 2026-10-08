@@ -100,7 +100,6 @@ PAGOS_INFO = {}
 ORDENES_ACTIVAS = {}
 lock_pendientes = Lock()
 
-# --- NUEVA FUNCION AUTO-CANCELADO 20 MIN ---
 async def cancelar_automatico(context):
     data = context.job.data
     pid = data["pid"]
@@ -303,7 +302,6 @@ async def button(update, context):
                 user_data["pedido_id"] = pid
                 await context.bot.send_message(uid, f"✅ #{pid} APROBADO\n\nVenderás {info['monto']} USDT\nRecibirás: {info['total']:.0f} CUP\n\n🌐 Red: BEP20 (BSC) - OBLIGATORIO\nEnvía los {info['monto']} USDT a:\n<code>{WALLET_BEP20}</code>\n\n⚠️ Solo BEP20, si envías por otra red se pierde el dinero\n\n{ADVERTENCIA}\n\nLuego manda CAPTURA 📸", parse_mode="HTML")
 
-            # --- TIMER 20 MIN AUTO CANCELADO ---
             ORDENES_ACTIVAS[pid] = {"uid": uid, "tipo": tipo}
             try:
                 context.job_queue.run_once(cancelar_automatico, 1200, data={"pid": pid, "uid": uid, "tipo": tipo, "monto": info["monto"], "total": info["total"], "usuario": info.get("usuario","Usuario"), "username": info.get("username","")}, name=f"cancel_{pid}")
@@ -368,7 +366,6 @@ async def recibir_mensaje(update, context):
     if txt.startswith("/"): return
     if not flow: return await update.message.reply_text("Usa /tienda")
 
-    # Si manda foto, cancelar timer de 20 min
     if update.message.photo:
         ORDENES_ACTIVAS.pop(pid, None)
         try:
@@ -431,53 +428,42 @@ async def recibir_mensaje(update, context):
             try: await update.message.forward(ADMIN_CHANNEL_ID)
             except: pass
             context.user_data["flow"]="venta_saldo_datos"
-            # FIX: Ahora solo pide tarjeta primero
-            await update.message.reply_text(f"📸 Captura recibida ✅\n\nAhora envía tu TARJETA CUP (16 dígitos) donde te vamos a pagar los {context.user_data.get('total_cup',0):.0f} CUP")
+            total_msg = context.user_data.get('total_cup',0)
+            await update.message.reply_text(f"📸 Captura recibida ✅\n\nAhora envía tu TARJETA CUP (16 dígitos) donde te vamos a pagar los {total_msg:.0f} CUP")
         else: await update.message.reply_text(f"Manda foto con claridad 📸\n\n{ADVERTENCIA}")
     elif flow=="venta_saldo_datos":
-        # --- FIX VENTA EN 2 PASOS - SALDO ---
-        # Paso 1: Si aún no tenemos tarjeta, guardamos la tarjeta
+        # FIX 2 PASOS - SALDO
         if "tarjeta_venta" not in context.user_data:
-            # Si mandó todo junto (tarjeta + confirm), separamos
-            numeros = ''.join(filter(str.isdigit, txt))
-            # Si tiene más de 16 dígitos, los primeros 16 son tarjeta, resto confirm
-            if len(numeros) >= 16:
-                tarjeta = numeros[:16]
-                resto = txt.replace(tarjeta, "").strip()
-                # Si escribió tarjeta y confirm junto, lo cogemos de una
-                if len(numeros) > 20 or len(resto) > 3:
-                    confirm_num = resto if resto else numeros[16:]
-                    # Ya tenemos todo de una vez
-                    await update.message.reply_text(MENSAJE_FINAL)
+            digitos = ''.join(filter(str.isdigit, txt))
+            if len(digitos) < 16:
+                await update.message.reply_text("❌ Esa tarjeta no parece válida. Envíame los 16 dígitos.")
+                return
+            tarjeta = digitos[:16]
+            confirm_junto = digitos[16:]
+            if len(confirm_junto) >= 4:
+                await update.message.reply_text(MENSAJE_FINAL)
+                try:
+                    monto = context.user_data.get('monto',0)
+                    total = context.user_data.get('total_cup',0)
+                    PAGOS_INFO[pid] = {"operacion": "venta de saldo", "monto": f"{total:.2f} CUP", "usuario": f"{usuario} {username}"}
+                    stock["saldo"] = stock["saldo"] + monto
+                    guardar_stock(stock)
+                    ORDENES_ACTIVAS.pop(pid, None)
                     try:
-                        monto = context.user_data.get('monto',0)
-                        total = context.user_data.get('total_cup',0)
-                        PAGOS_INFO[pid] = {"operacion": "venta de saldo", "monto": f"{total:.2f} CUP", "usuario": f"{usuario} {username}"}
-                        stock["saldo"] = stock["saldo"] + monto
-                        guardar_stock(stock)
-                        # Cancela timer 20min
-                        ORDENES_ACTIVAS.pop(pid, None)
-                        try:
-                            jobs = context.job_queue.get_jobs_by_name(f"cancel_{pid}")
-                            for j in jobs: j.schedule_removal()
-                        except: pass
-                        await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {monto:.0f}\nA pagar: {total:.0f} CUP\n📦 Stock nuevo: {stock['saldo']:.0f}", reply_markup=btn_confirmar())
-                        await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 TARJETA Y NUMERO COPIABLE #{pid}:\nTarjeta: <code>{tarjeta}</code>\nConfirm: <code>{confirm_num}</code>\nOriginal: <code>{txt}</code>", parse_mode="HTML")
+                        jobs = context.job_queue.get_jobs_by_name(f"cancel_{pid}")
+                        for j in jobs: j.schedule_removal()
                     except: pass
-                    context.user_data.clear()
-                    return
-                else:
-                    # Solo tarjeta
-                    context.user_data["tarjeta_venta"] = tarjeta
-                    await update.message.reply_text(f"✅ Tarjeta recibida: {tarjeta}\n\nAhora envíame el NÚMERO A CONFIRMAR (el código que te da Transfermóvil) en otro mensaje.")
-                    return
+                    await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {monto:.0f}\nA pagar: {total:.0f} CUP\n📦 Stock nuevo: {stock['saldo']:.0f}", reply_markup=btn_confirmar())
+                    await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 TARJETA Y NUMERO COPIABLE #{pid}:\nTarjeta: <code>{tarjeta}</code>\nConfirm: <code>{confirm_junto}</code>", parse_mode="HTML")
+                except: pass
+                context.user_data.clear()
+                return
             else:
-                await update.message.reply_text("❌ Esa tarjeta no parece válida. Envíame los 16 dígitos de tu tarjeta CUP.")
+                context.user_data["tarjeta_venta"] = tarjeta
+                await update.message.reply_text(f"✅ Tarjeta recibida: {tarjeta}\n\nAhora envíame el NÚMERO A CONFIRMAR en otro mensaje aparte.")
                 return
         else:
-            # Paso 2: Ya tenemos tarjeta, este mensaje es el número a confirmar
             tarjeta_guardada = context.user_data.get("tarjeta_venta", "")
-            confirmacion = txt
             await update.message.reply_text(MENSAJE_FINAL)
             try:
                 monto = context.user_data.get('monto',0)
@@ -491,7 +477,7 @@ async def recibir_mensaje(update, context):
                     for j in jobs: j.schedule_removal()
                 except: pass
                 await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {monto:.0f}\nA pagar: {total:.0f} CUP\n📦 Stock nuevo: {stock['saldo']:.0f}", reply_markup=btn_confirmar())
-                await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 TARJETA Y NUMERO COPIABLE #{pid}:\nTarjeta: <code>{tarjeta_guardada}</code>\nConfirm: <code>{confirmacion}</code>", parse_mode="HTML")
+                await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 TARJETA Y NUMERO COPIABLE #{pid}:\nTarjeta: <code>{tarjeta_guardada}</code>\nConfirm: <code>{txt}</code>", parse_mode="HTML")
             except: pass
             context.user_data.clear()
     elif flow=="compra_usdt_monto":
@@ -546,45 +532,42 @@ async def recibir_mensaje(update, context):
             try: await update.message.forward(ADMIN_CHANNEL_ID)
             except: pass
             context.user_data["flow"]="venta_usdt_datos"
-            # FIX: Ahora solo pide tarjeta primero
-            await update.message.reply_text(f"📸 Captura recibida ✅\n\nAhora envía tu TARJETA CUP (16 dígitos) donde te vamos a pagar los {context.user_data.get('total_cup',0):.0f} CUP por tus USDT")
+            total_msg = context.user_data.get('total_cup',0)
+            await update.message.reply_text(f"📸 Captura recibida ✅\n\nAhora envía tu TARJETA CUP (16 dígitos) donde te vamos a pagar los {total_msg:.0f} CUP por tus USDT")
         else: await update.message.reply_text(f"Manda captura con claridad 📸\n\n{ADVERTENCIA}")
     elif flow=="venta_usdt_datos":
-        # --- FIX VENTA EN 2 PASOS - USDT ---
+        # FIX 2 PASOS - USDT
         if "tarjeta_venta" not in context.user_data:
-            numeros = ''.join(filter(str.isdigit, txt))
-            if len(numeros) >= 16:
-                tarjeta = numeros[:16]
-                resto = txt.replace(tarjeta, "").strip()
-                if len(numeros) > 20 or len(resto) > 3:
-                    confirm_num = resto if resto else numeros[16:]
-                    await update.message.reply_text(MENSAJE_FINAL)
+            digitos = ''.join(filter(str.isdigit, txt))
+            if len(digitos) < 16:
+                await update.message.reply_text("❌ Esa tarjeta no parece válida. Envíame los 16 dígitos.")
+                return
+            tarjeta = digitos[:16]
+            confirm_junto = digitos[16:]
+            if len(confirm_junto) >= 4:
+                await update.message.reply_text(MENSAJE_FINAL)
+                try:
+                    total = context.user_data.get('total_cup',0)
+                    usdt = context.user_data.get('usdt',0)
+                    PAGOS_INFO[pid] = {"operacion": "venta de USDT", "monto": f"{total:.2f} CUP", "usuario": f"{usuario} {username}"}
+                    stock["usdt"] = stock["usdt"] + usdt
+                    guardar_stock(stock)
+                    ORDENES_ACTIVAS.pop(pid, None)
                     try:
-                        total = context.user_data.get('total_cup',0)
-                        usdt = context.user_data.get('usdt',0)
-                        PAGOS_INFO[pid] = {"operacion": "venta de USDT", "monto": f"{total:.2f} CUP", "usuario": f"{usuario} {username}"}
-                        stock["usdt"] = stock["usdt"] + usdt
-                        guardar_stock(stock)
-                        ORDENES_ACTIVAS.pop(pid, None)
-                        try:
-                            jobs = context.job_queue.get_jobs_by_name(f"cancel_{pid}")
-                            for j in jobs: j.schedule_removal()
-                        except: pass
-                        await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {usdt} USDT BEP20\nRecibe: {total:.0f} CUP\n📦 Stock USDT nuevo: {stock['usdt']:.0f}", reply_markup=btn_confirmar())
-                        await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 DATOS COPIABLES #{pid}:\nTarjeta: <code>{tarjeta}</code>\nConfirm: <code>{confirm_num}</code>\nOriginal: <code>{txt}</code>", parse_mode="HTML")
+                        jobs = context.job_queue.get_jobs_by_name(f"cancel_{pid}")
+                        for j in jobs: j.schedule_removal()
                     except: pass
-                    context.user_data.clear()
-                    return
-                else:
-                    context.user_data["tarjeta_venta"] = tarjeta
-                    await update.message.reply_text(f"✅ Tarjeta recibida: {tarjeta}\n\nAhora envíame el NÚMERO A CONFIRMAR en otro mensaje.")
-                    return
+                    await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {usdt} USDT BEP20\nRecibe: {total:.0f} CUP\n📦 Stock USDT nuevo: {stock['usdt']:.0f}", reply_markup=btn_confirmar())
+                    await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 DATOS COPIABLES #{pid}:\nTarjeta: <code>{tarjeta}</code>\nConfirm: <code>{confirm_junto}</code>", parse_mode="HTML")
+                except: pass
+                context.user_data.clear()
+                return
             else:
-                await update.message.reply_text("❌ Esa tarjeta no parece válida. Envíame los 16 dígitos de tu tarjeta CUP.")
+                context.user_data["tarjeta_venta"] = tarjeta
+                await update.message.reply_text(f"✅ Tarjeta recibida: {tarjeta}\n\nAhora envíame el NÚMERO A CONFIRMAR en otro mensaje aparte.")
                 return
         else:
             tarjeta_guardada = context.user_data.get("tarjeta_venta", "")
-            confirmacion = txt
             await update.message.reply_text(MENSAJE_FINAL)
             try:
                 total = context.user_data.get('total_cup',0)
@@ -598,7 +581,7 @@ async def recibir_mensaje(update, context):
                     for j in jobs: j.schedule_removal()
                 except: pass
                 await context.bot.send_message(ADMIN_CHANNEL_ID, f"💵 RESUMEN FINAL #{pid}\n{usuario}\nVende: {usdt} USDT BEP20\nRecibe: {total:.0f} CUP\n📦 Stock USDT nuevo: {stock['usdt']:.0f}", reply_markup=btn_confirmar())
-                await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 DATOS COPIABLES #{pid}:\nTarjeta: <code>{tarjeta_guardada}</code>\nConfirm: <code>{confirmacion}</code>", parse_mode="HTML")
+                await context.bot.send_message(ADMIN_CHANNEL_ID, f"💳 DATOS COPIABLES #{pid}:\nTarjeta: <code>{tarjeta_guardada}</code>\nConfirm: <code>{txt}</code>", parse_mode="HTML")
             except: pass
             context.user_data.clear()
 def run_flask(): app_web.run(host='0.0.0.0',port=int(os.environ.get("PORT",10000)))
