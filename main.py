@@ -14,6 +14,19 @@ SOPORTE_USERNAME = "@AlvanisPivqvaplay"
 MENSAJE_FINAL = "✅ Pedido registrado. Le pagaremos en breve. Gracias por preferirnos 🙏\n\nUsa /tienda para nuevo pedido"
 ADVERTENCIA = "⚠️ ATENCIÓN:\nLa captura debe verse con TOTAL CLARIDAD (monto, fecha, referencia).\n\n🚫 Cualquier intento de engaño, captura falsa, editada o estafa = BANEO PERMANENTE y serás reportado en todos los grupos y canales."
 MENSAJE_AGOTADO = "⚠️ Saldo ETECSA agotado por hoy límite 3\nPor favor vuelve mañana para realizar tu pedido. Te esperamos 🙏"
+MENSAJE_BIENVENIDA = """🇨🇺✨ ¡BIENVENIDO A CUBANSTORE! ✨🇨🇺
+
+🛒 Tu Tienda #1 de Confianza para:
+💳 Compra y Venta de SALDO MÓVIL
+🚀 Compra y Venta de USDT (BEP20)
+
+⚡ PAGOS AL INSTANTE
+✅ Rápido | Seguro | Confiable
+💙 Atendido por su dueño directamente
+
+🕒 Horario: 8:00 AM - 10:30 PM 🇨🇺
+
+👇 ¿Qué deseas hacer hoy?"""
 app_web = Flask(__name__)
 @app_web.route('/')
 def home(): return "Bot activo"
@@ -241,8 +254,8 @@ async def mostrar_menu(u,c):
             await u.edit_message_text(MENSAJE_CERRADO)
         return
     kb=[[InlineKeyboardButton("📲💳 Comprar saldo",callback_data="comprar_saldo")],[InlineKeyboardButton("💵📱 Vender saldo",callback_data="vender_saldo")],[InlineKeyboardButton("🚀🪙 Comprar USDT",callback_data="comprar_crypto")],[InlineKeyboardButton("💸🔗 Vender USDT",callback_data="vender_crypto")]]
-    if isinstance(u,Update): await u.message.reply_text("🛍️ Elige:",reply_markup=InlineKeyboardMarkup(kb))
-    else: await u.edit_message_text("🛍️ Elige:",reply_markup=InlineKeyboardMarkup(kb))
+    if isinstance(u,Update): await u.message.reply_text(MENSAJE_BIENVENIDA,reply_markup=InlineKeyboardMarkup(kb))
+    else: await u.edit_message_text(MENSAJE_BIENVENIDA,reply_markup=InlineKeyboardMarkup(kb))
 async def tienda(u,c): await mostrar_menu(u,c)
 async def soporte(u,c):
     await u.message.reply_text(f"📞 SOPORTE OFICIAL\n\n👤 Dueño: {SOPORTE_USERNAME}\n\nSi tienes dudas escríbeme directo al privado 🙏", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💬 Hablar con Soporte", url="https://t.me/AlvanisPivqvaplay")]]))
